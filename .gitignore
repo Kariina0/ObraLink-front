@@ -13,6 +13,8 @@
 
 # misc
 .DS_Store
+# Ignorar TODOS os arquivos .env (incluindo o base) para não vazar credenciais (C-5)
+.env
 .env.local
 .env.development.local
 .env.test.local

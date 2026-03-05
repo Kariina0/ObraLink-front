@@ -6,7 +6,7 @@
 // automaticamente quando a conexão é restaurada.
 import React, { useState, useEffect } from "react";
 import Layout from "../components/Layout";
-import { saveFileOffline, getPendingFiles, markAsUploaded, removeOfflineFile } from "../utils/db";
+import { saveFileOffline, getPendingFiles, markAsUploaded, removeOfflineFile, incrementRetryCount, MAX_RETRY_COUNT } from "../utils/db";
 import { uploadFile } from "../services/filesService";
 import { listObras } from "../services/obrasService";
 import { extractApiMessage } from "../services/response";
@@ -81,6 +81,7 @@ function Upload() {
       if (pendentes.length === 0) return;
 
       let enviados = 0;
+      let falhos = 0;
       for (const item of pendentes) {
         try {
           // Reenvia o arquivo junto com os metadados salvos offline
@@ -89,11 +90,21 @@ function Upload() {
           await removeOfflineFile(item.id);
           enviados++;
         } catch (err) {
+          // Incrementa o contador de tentativas — após MAX_RETRY_COUNT falhas
+          // o arquivo será removido automaticamente pelo getPendingFiles (I-9/M-10)
+          await incrementRetryCount(item.id);
+          const nextCount = (item.retryCount ?? 0) + 1;
+          if (nextCount >= MAX_RETRY_COUNT) {
+            falhos++;
+          }
           console.error("Erro ao reenviar arquivo pendente:", err);
         }
       }
       if (enviados > 0) {
         setSuccess(`${enviados} arquivo(s) pendente(s) enviado(s) com sucesso!`);
+      }
+      if (falhos > 0) {
+        setError(`${falhos} arquivo(s) foram descartados após ${MAX_RETRY_COUNT} tentativas sem sucesso. Tente enviá-los novamente.`);
       }
       await loadPendingFiles();
     };
