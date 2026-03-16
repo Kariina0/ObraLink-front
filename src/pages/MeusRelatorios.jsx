@@ -12,7 +12,7 @@ import { PAGE_LIMIT_RELATORIOS } from "../constants/pagination";
 import api from "../services/api";
 import "../styles/pages.css";
 
-const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5001/api").replace(/\/api\/?$/, "");
+const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
 // Constantes importadas de ../constants/medicao
 

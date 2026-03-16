@@ -1,7 +1,7 @@
 // src/pages/GerenciarObras.jsx
 // Gerenciar Obras — listagem, cadastro (admin) e edição (admin) de obras.
 // Administradores também podem vincular/desvincular encarregados responsáveis.
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useState } from "react";
 import Layout from "../components/Layout";
 import {
   createObra,
