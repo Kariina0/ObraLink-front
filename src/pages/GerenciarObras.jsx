@@ -9,9 +9,9 @@ import {
   updateObra,
   vincularEncarregado,
   desvincularEncarregado,
+  getEncarregadosDisponiveis,
 } from "../services/obrasService";
 import useObras from "../hooks/useObras";
-import { listUsers } from "../services/usersService";
 import { extractApiMessage } from "../services/response";
 import { AuthContext } from "../context/AuthContext";
 import { isAdmin } from "../constants/permissions";
@@ -76,11 +76,11 @@ function GerenciarObras() {
   // ── confirmação de exclusão inline (sem window.confirm) ─────────────────────
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
-  // ── carregamento de usuários (apenas quando abre painel de encarregados) ────
-  const loadUsuarios = async () => {
+  // ── carregamento de usuários disponíveis (apenas quando abre painel de encarregados) ────
+  const loadUsuarios = async (obraId) => {
     try {
       setUserLoading(true);
-      const data = await listUsers({ perfil: "encarregado", limit: 200 });
+      const data = await getEncarregadosDisponiveis(obraId);
       setUsuarios(Array.isArray(data) ? data : []);
     } catch (_) {
       setUsuarios([]);
@@ -133,8 +133,8 @@ function GerenciarObras() {
     setObraSelecionada(obra);
     setEncErro(null);
     setUserIdNovo("");
-    setFuncaoNova("encarregado");
-    loadUsuarios();
+    setFuncaoNova("");
+    loadUsuarios(obra.id);
     setModo("encarregados");
   };
 
@@ -214,9 +214,12 @@ function GerenciarObras() {
       );
       // Atualiza a obra selecionada com a lista de encarregados atualizada
       setObraSelecionada(obraAtualizada);
+      // Recarrega usuários disponíveis (remove o vinculado do dropdown)
+      await loadUsuarios(obraSelecionada.id);
       // Atualiza na lista principal
       await loadObras();
       setUserIdNovo("");
+      setFuncaoNova("");
     } catch (err) {
       setEncErro(extractApiMessage(err, "Não foi possível vincular o encarregado."));
     } finally {
@@ -231,6 +234,8 @@ function GerenciarObras() {
       setEncLoading(true);
       const obraAtualizada = await desvincularEncarregado(obraSelecionada.id, userId);
       setObraSelecionada(obraAtualizada);
+      // Recarrega usuários disponíveis (o desvinculado volta para o dropdown)
+      await loadUsuarios(obraSelecionada.id);
       await loadObras();
     } catch (err) {
       setEncErro(extractApiMessage(err, "Não foi possível desvincular o encarregado."));
@@ -400,10 +405,10 @@ function GerenciarObras() {
       ? obraSelecionada.encarregados
       : [];
 
-    // Remove usuários já vinculados do select
-    const usuariosDisponiveis = usuarios.filter(
-      (u) => !encarregadosVinculados.some((e) => Number(e.id) === Number(u.id))
-    );
+    // usuarios já vem do endpoint /disponiveis — exclui os vinculados no servidor
+    // Filtro local como fallback para evitar duplicatas após estado parcial
+    const idsVinculados = new Set(encarregadosVinculados.map((e) => Number(e.userId ?? e.id)));
+    const usuariosDisponiveis = usuarios.filter((u) => !idsVinculados.has(Number(u.id)));
 
     return (
       <Layout>
@@ -416,8 +421,8 @@ function GerenciarObras() {
             Encarregados — {obraSelecionada.nome || `Obra #${obraSelecionada.id}`}
           </h1>
           <p className="page-description">
-            Gerencie os encarregados responsáveis por esta obra. Apenas usuários com
-            perfil <strong>encarregado</strong> aparecem na lista.
+            Gerencie os encarregados responsáveis por esta obra. Apenas usuários
+            ainda não vinculados aparecem na lista para adição.
           </p>
 
           {encErro && <p className="erro-msg">{encErro}</p>}
@@ -444,15 +449,15 @@ function GerenciarObras() {
                   </thead>
                   <tbody>
                     {encarregadosVinculados.map((enc) => (
-                      <tr key={enc.id}>
-                        <td>{enc.nome || `#${enc.id}`}</td>
+                      <tr key={enc.userId ?? enc.id}>
+                        <td>{enc.nome || `#${enc.userId ?? enc.id}`}</td>
                         <td>{enc.email || "—"}</td>
                         <td>{enc.funcao || "encarregado"}</td>
                         <td>
                           <button
                             className="button-danger"
                             disabled={encLoading}
-                            onClick={() => handleDesvincular(enc.id)}
+                            onClick={() => handleDesvincular(enc.userId ?? enc.id)}
                             style={{ padding: "8px 14px" }}
                           >
                             Remover
@@ -481,7 +486,14 @@ function GerenciarObras() {
                     <select
                       id="enc-user"
                       value={userIdNovo}
-                      onChange={(e) => setUserIdNovo(e.target.value)}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        setUserIdNovo(selectedId);
+                        const selectedUser = usuariosDisponiveis.find(
+                          (u) => String(u.id) === selectedId
+                        );
+                        setFuncaoNova(selectedUser?.perfil || "");
+                      }}
                     >
                       <option value="">Selecione...</option>
                       {usuariosDisponiveis.map((u) => (
@@ -498,8 +510,9 @@ function GerenciarObras() {
                       id="enc-funcao"
                       type="text"
                       value={funcaoNova}
-                      onChange={(e) => setFuncaoNova(e.target.value)}
-                      placeholder="encarregado"
+                      readOnly
+                      placeholder="Selecione um usuário"
+                      style={{ background: "var(--cor-fundo-input-desabilitado, #f3f4f6)", cursor: "default" }}
                     />
                   </div>
                 </div>

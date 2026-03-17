@@ -127,3 +127,14 @@ export async function desvincularEncarregado(obraId, userId) {
   const response = await api.delete(`/obras/${obraId}/encarregados/${userId}`);
   return parseObra(extractApiData(response.data));
 }
+
+/**
+ * Lista usuários disponíveis para vincular como encarregados à obra.
+ * Retorna apenas usuários ativos ainda não vinculados.
+ * @param {number} obraId - ID da obra
+ */
+export async function getEncarregadosDisponiveis(obraId) {
+  const response = await api.get(`/obras/${obraId}/encarregados/disponiveis`);
+  const data = extractApiData(response.data);
+  return Array.isArray(data) ? data : [];
+}
