@@ -1,59 +1,76 @@
 /* ========================================
-   VARIÁVEIS DE CORES E ESPAÇAMENTOS
-   (Design acessível — público com pouca familiaridade com tecnologia)
+   DESIGN TOKENS — ObraLink
+   Sistema de gestão operacional de obras
    ======================================== */
 :root {
-  /* Cores com alto contraste */
-  --cor-primaria: #1d4ed8;        /* azul escuro — contraste AAA */
-  --cor-primaria-hover: #1e40af;
-  --cor-primaria-clara: #dbeafe;
+  /* ── Cores — marca e semântica ─────────────────────────── */
+  --cor-primaria:           #1d4ed8;   /* azul escuro — contraste AAA */
+  --cor-primaria-hover:     #1e40af;
+  --cor-primaria-clara:     #dbeafe;
+  --cor-primaria-escura:    #1e3a5f;   /* header / navbar / sidebar */
 
-  --cor-sucesso: #166534;        /* verde escuro — contraste AAA */
-  --cor-sucesso-hover: #14532d;
-  --cor-sucesso-clara: #dcfce7;
+  --cor-ativo:              #facc15;   /* amarelo capacete — indicador ativo em todos os menus */
 
-  --cor-perigo: #b91c1c;         /* vermelho escuro — contraste AAA */
-  --cor-perigo-hover: #991b1b;
-  --cor-perigo-clara: #fee2e2;
+  --cor-sucesso:            #166534;   /* verde escuro — contraste AAA */
+  --cor-sucesso-hover:      #14532d;
+  --cor-sucesso-clara:      #dcfce7;
 
-  --cor-aviso: #92400e;          /* âmbar escuro — contraste AAA */
-  --cor-aviso-clara: #fef3c7;
+  --cor-perigo:             #b91c1c;   /* vermelho escuro — contraste AAA */
+  --cor-perigo-hover:       #991b1b;
+  --cor-perigo-clara:       #fee2e2;
 
-  /* Cores neutras — alto contraste */
-  --cor-texto-principal: #111827;
-  --cor-texto-secundario: #374151;
-  --cor-borda: #9ca3af;
-  --cor-fundo: #f3f4f6;
-  --cor-fundo-secundario: #ffffff;
+  --cor-aviso:              #92400e;   /* âmbar escuro — contraste AAA */
+  --cor-aviso-clara:        #fef3c7;
 
-  /* Header */
-  --cor-header: #1e3a5f;
-  --cor-header-texto: #ffffff;
-  --cor-header-border: #1a3353;
+  /* ── Cores neutras — alto contraste ──────────────────── */
+  --cor-texto-principal:    #111827;
+  --cor-texto-secundario:   #374151;
+  --cor-texto-desabilitado: #9ca3af;
 
-  /* Espaçamentos generosos */
-  --espacamento-xs: 6px;
-  --espacamento-sm: 12px;
-  --espacamento-md: 20px;
-  --espacamento-lg: 28px;
-  --espacamento-xl: 40px;
+  --cor-borda:              #9ca3af;   /* inputs e campos interativos */
+  --cor-borda-card:         #e5e7eb;   /* cards, tabelas, separadores decorativos */
 
-  /* Tipografia */
+  --cor-fundo:              #f3f4f6;
+  --cor-fundo-secundario:   #ffffff;
+  --cor-fundo-terciario:    #f9fafb;   /* hover em listas, zebra de tabelas */
+
+  /* ── Header / Navbar / Sidebar ────────────────────────── */
+  --cor-header:             #1e3a5f;
+  --cor-header-texto:       #ffffff;
+  --cor-header-border:      #1a3353;
+
+  /* ── Espaçamentos — escala base-4 ─────────────────────── */
+  --espacamento-xs:  8px;
+  --espacamento-sm:  12px;
+  --espacamento-md:  16px;
+  --espacamento-lg:  24px;
+  --espacamento-xl:  32px;
+
+  /* ── Tipografia ───────────────────────────────────────── */
   --fonte-principal: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --tamanho-fonte-base: 17px;
+  --tamanho-fonte-base:    17px;
   --tamanho-fonte-pequena: 15px;
-  --tamanho-fonte-grande: 19px;
-  --tamanho-titulo: 26px;
-  --tamanho-subtitulo: 21px;
+  --tamanho-fonte-grande:  19px;
+  --tamanho-titulo:        26px;
+  --tamanho-subtitulo:     21px;
 
-  /* Bordas */
-  --borda-radius: 8px;
-  --borda-radius-grande: 12px;
+  /* ── Bordas / Raios (3 níveis) ─────────────────────────── */
+  --radius-sm:           4px;    /* badges, chips, tags */
+  --radius-md:           8px;    /* botões, inputs, controles */
+  --radius-lg:           12px;   /* cards, modais, form-containers */
+  /* aliases para retrocompatibilidade */
+  --borda-radius:        var(--radius-md);
+  --borda-radius-grande: var(--radius-lg);
 
-  /* Sombras sutis */
-  --sombra-pequena: 0 1px 3px rgba(0, 0, 0, 0.12);
-  --sombra-media: 0 4px 8px rgba(0, 0, 0, 0.12);
-  --sombra-grande: 0 8px 16px rgba(0, 0, 0, 0.12);
+  /* ── Sombras — 3 níveis de elevação ───────────────────── */
+  --sombra-pequena: 0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --sombra-media:   0 4px 12px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+  --sombra-grande:  0 16px 40px rgba(0, 0, 0, 0.16), 0 6px 12px rgba(0, 0, 0, 0.10);
+
+  /* ── Transições ───────────────────────────────────────── */
+  --transition-fast: 0.12s ease;
+  --transition-base: 0.18s ease;
+  --transition-slow: 0.25s ease;
 }
 
 /* Reset e base global */
@@ -460,6 +477,11 @@ body {
 
   .container {
     padding: var(--espacamento-xs) var(--espacamento-sm);
+  }
+
+  :root {
+    --espacamento-xl: 20px;
+    --espacamento-lg: 16px;
   }
 }
 

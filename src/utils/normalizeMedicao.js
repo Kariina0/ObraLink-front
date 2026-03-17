@@ -32,6 +32,7 @@ export function normalizeMedicao(m) {
     itens,
     anexos:          Array.isArray(m.anexos) ? m.anexos : [],
     foto:            m.foto || null,
+    data:            m.data || null,
     createdAt:       m.createdAt || null,
   };
 }

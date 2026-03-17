@@ -380,7 +380,7 @@
   /* Sidebar aberta — desliza para dentro */
   .sidebar--mobile-open {
     left: 0;
-    box-shadow: 6px 0 24px rgba(0, 0, 0, 0.28);
+    box-shadow: var(--sombra-grande);
   }
 
   /* Anula estilos "collapsed" dentro do mobile para exibição completa */

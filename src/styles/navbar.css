@@ -5,14 +5,13 @@
 
 :root {
   --navbar-height:      64px;
-  --navbar-bg:          #1e3a5f;   /* azul escuro do sistema */
-  --navbar-bg-hover:    #16304f;   /* hover ligeiramente mais escuro */
-  --navbar-bg-active:   #122845;   /* item ativo */
-  --navbar-border:      #1a3353;
+  --navbar-bg:          var(--cor-header);
+  --navbar-bg-hover:    #16304f;
+  --navbar-bg-active:   #122845;
+  --navbar-border:      var(--cor-header-border);
   --navbar-text:        rgba(255, 255, 255, 0.90);
   --navbar-text-bright: #ffffff;
-  --navbar-active-ind:  #facc15;   /* indicador amarelo — mesmo da sidebar anterior */
-  --dropdown-shadow:    0 6px 24px rgba(0, 0, 0, 0.22);
+  --navbar-active-ind:  var(--cor-ativo);   /* #facc15 — indicador amarelo unificado */
 }
 
 /* ── Barra principal ──────────────────────────────────────── */
@@ -141,11 +140,11 @@
   top: calc(100% + 1px);
   left: 0;
   min-width: 220px;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-top: 3px solid #1d4ed8;
-  border-radius: 0 0 8px 8px;
-  box-shadow: var(--dropdown-shadow);
+  background: var(--cor-fundo-secundario);
+  border: 1px solid var(--cor-borda-card);
+  border-top: 3px solid var(--cor-primaria);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--sombra-media);
   padding: 6px 0;
   z-index: 9999;
   animation: nbDropIn 0.15s ease;
@@ -174,7 +173,7 @@
   min-height: 44px;
   font-size: 15px;
   font-weight: 500;
-  color: #1f2937;
+  color: var(--cor-texto-principal);
   background: transparent;
   border: none;
   border-left: 3px solid transparent;
@@ -182,28 +181,28 @@
   font-family: inherit;
   text-align: left;
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .dropdown-item:hover,
 .dropdown-item.active {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-left-color: #1d4ed8;
+  background: var(--cor-primaria-clara);
+  color: var(--cor-primaria);
+  border-left-color: var(--cor-primaria);
 }
 
 .dropdown-item:focus-visible {
-  outline: 2px solid #1d4ed8;
+  outline: 2px solid var(--cor-primaria);
   outline-offset: -2px;
 }
 
-.dropdown-item--danger       { color: #b91c1c; }
-.dropdown-item--danger:hover { background: #fee2e2; color: #991b1b; border-left-color: #b91c1c; }
+.dropdown-item--danger       { color: var(--cor-perigo); }
+.dropdown-item--danger:hover { background: var(--cor-perigo-clara); color: var(--cor-perigo-hover); border-left-color: var(--cor-perigo); }
 
 /* Divisor no dropdown */
 .dropdown-divider {
   height: 1px;
-  background: #e5e7eb;
+  background: var(--cor-borda-card);
   margin: 5px 0;
 }
 
@@ -218,7 +217,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--navbar-text-bright);
   font-size: 14px;
 }
 
@@ -229,14 +228,14 @@
   justify-content: center;
   background: rgba(255, 255, 255, 0.10);
   border: 1.5px solid rgba(255, 255, 255, 0.35);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: #ffffff;
   width: 44px;
   height: 44px;
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .navbar-hamburger:hover        { background: rgba(255, 255, 255, 0.20); border-color: rgba(255, 255, 255, 0.60); }
@@ -244,11 +243,11 @@
 
 /* ── Menu mobile expandido ────────────────────────────────── */
 .navbar-mobile-menu {
-  background: #1e3a5f;
+  background: var(--navbar-bg);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   padding: 6px 0 16px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.30);
-  animation: nbDropIn 0.15s ease;
+  box-shadow: var(--sombra-grande);
+  animation: nbDropIn var(--transition-base);
   max-height: calc(100vh - var(--navbar-height));
   overflow-y: auto;
 }

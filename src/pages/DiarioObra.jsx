@@ -27,10 +27,6 @@ const CLIMA_LABEL = Object.fromEntries(
 // Data máxima aceita no input (hoje, no fuso local)
 const HOJE = new Date().toISOString().slice(0, 10);
 
-function pluralAtividades(n) {
-  return n === 1 ? "1 atividade" : `${n} atividades`;
-}
-
 // ── Cartão de detalhes de um diário recente ───────────────────────────────────
 function CardDiario({ d, formatarData }) {
   const [expandido, setExpandido] = useState(false);

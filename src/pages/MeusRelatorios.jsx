@@ -1,11 +1,16 @@
 // src/pages/MeusRelatorios.jsx
-// Meus Relatórios — exibe as medições enviadas pelo usuário logado.
-// Inclui filtros por obra, período, status e tipo de serviço.
-// Exibe todos os campos relevantes: área, tipo de serviço, problemas, arquivos.
+// Relatórios de Medições — painel gerencial exclusivo para Admin e Supervisor.
+// Mostra visão consolidada das obras, resumo de status por medição e exportação em CSV.
+// Filtros avançados: obra, responsável, período, status, tipo de serviço.
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import { listMedicoesPaginado } from "../services/medicoesService";
+import { listAllMedicoesPaginado } from "../services/medicoesService";
+import {
+  downloadManagementCsv,
+  downloadMedicoesCsv,
+} from "../services/managementService";
+import { listUsers } from "../services/usersService";
 import { TIPOS_SERVICO, getTipoServicoLabel, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao";
 import { normalizeMedicao } from "../utils/normalizeMedicao";
 import useObras from "../hooks/useObras";
@@ -14,8 +19,6 @@ import api from "../services/api";
 import "../styles/pages.css";
 
 const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
-
-// Constantes importadas de ../constants/medicao
 
 // Resolve URL de arquivo (relativa ou absoluta)
 function getFotoUrl(m) {
@@ -26,55 +29,75 @@ function getFotoUrl(m) {
   return `${BASE_URL}${source.startsWith("/") ? "" : "/"}${source}`;
 }
 
+function getInitialSummary() {
+  return { enviada: 0, aprovada: 0, rejeitada: 0, rascunho: 0 };
+}
+
 function MeusRelatorios() {
   const navigate = useNavigate();
-  const [medicoes, setMedicoes]     = useState([]);
-  const { obras }                   = useObras(200);
-  const [erro, setErro]             = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [expandedId, setExpandedId] = useState(null);
-  const [fotoUrls, setFotoUrls]     = useState({});
+  const [medicoes, setMedicoes]       = useState([]);
+  const { obras }                     = useObras(200);
+  const [responsaveis, setResponsaveis] = useState([]);
+  const [erro, setErro]               = useState(null);
+  const [loading, setLoading]         = useState(true);
+  const [expandedId, setExpandedId]   = useState(null);
+  const [fotoUrls, setFotoUrls]       = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems]   = useState(0);
+  const [statusSummary, setStatusSummary] = useState(getInitialSummary());
 
-  // ── filtros ─────────────────────────────────────────────────────────────────
+  // Exportação
+  const [exportPeriodo, setExportPeriodo] = useState(30);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportErro, setExportErro]       = useState(null);
+
+  // ── Filtros ─────────────────────────────────────────────────────────────────
   const [filtros, setFiltros] = useState({
     obra:        "",
+    responsavel: "",
     status:      "",
     tipoServico: "",
     dataInicio:  "",
     dataFim:     "",
   });
 
-  // Carrega medições aplicando filtros
+  const totalPages      = Math.ceil(totalItems / PAGE_LIMIT_RELATORIOS);
+  const temFiltroAtivo  = Object.values(filtros).some(Boolean);
+
+  // Carrega lista de encarregados uma vez
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        setErro(null);
+    listUsers({ perfil: "encarregado", limit: 200 })
+      .then(setResponsaveis)
+      .catch(() => setResponsaveis([]));
+  }, []);
 
-        // Monta apenas filtros não-vazios
-        const params = { page: currentPage, limit: PAGE_LIMIT_RELATORIOS };
-        if (filtros.obra)        params.obra        = filtros.obra;
-        if (filtros.status)      params.status      = filtros.status;
-        if (filtros.tipoServico) params.tipoServico = filtros.tipoServico;
-        if (filtros.dataInicio)  params.dataInicio  = `${filtros.dataInicio}T00:00:00`;
-        if (filtros.dataFim)     params.dataFim     = `${filtros.dataFim}T23:59:59`;
+  // Carrega medições aplicando filtros
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setErro(null);
 
-        const res = await listMedicoesPaginado(params);
-        const raw = Array.isArray(res) ? res : res?.data || [];
-        setMedicoes(raw.map(normalizeMedicao));
-        setTotalItems(res?.pagination?.totalItems ?? raw.length);
-      } catch (err) {
+      const params = { page: currentPage, limit: PAGE_LIMIT_RELATORIOS };
+      if (filtros.obra)        params.obra        = filtros.obra;
+      if (filtros.responsavel) params.responsavel = filtros.responsavel;
+      if (filtros.status)      params.status      = filtros.status;
+      if (filtros.tipoServico) params.tipoServico = filtros.tipoServico;
+      if (filtros.dataInicio)  params.dataInicio  = `${filtros.dataInicio}T00:00:00`;
+      if (filtros.dataFim)     params.dataFim     = `${filtros.dataFim}T23:59:59`;
 
-        setErro("Não foi possível carregar as medições.");
-      } finally {
-        setLoading(false);
-      }
-    };
+      const res = await listAllMedicoesPaginado(params);
+      const raw = Array.isArray(res.data) ? res.data : [];
+      setMedicoes(raw.map(normalizeMedicao));
+      setTotalItems(res.pagination?.totalItems ?? raw.length);
+      setStatusSummary({ ...getInitialSummary(), ...(res.statusSummary || {}) });
+    } catch {
+      setErro("Não foi possível carregar as medições. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  }, [filtros, currentPage]);
 
-    load();
-  }, [filtros, currentPage]); // re-executa ao mudar filtro ou página
+  useEffect(() => { load(); }, [load]);
 
   const handleFiltro = (e) => {
     const { name, value } = e.target;
@@ -84,57 +107,87 @@ function MeusRelatorios() {
 
   const limparFiltros = () => {
     setCurrentPage(1);
-    setFiltros({ obra: "", status: "", tipoServico: "", dataInicio: "", dataFim: "" });
+    setFiltros({ obra: "", responsavel: "", status: "", tipoServico: "", dataInicio: "", dataFim: "" });
   };
 
-  const temFiltroAtivo = Object.values(filtros).some(Boolean);
+  // Clique em badge de status aplica/remove filtro
+  const toggleStatusFiltro = (key) => {
+    setCurrentPage(1);
+    setFiltros((prev) => ({ ...prev, status: prev.status === key ? "" : key }));
+  };
 
   /**
    * Expande/recolhe o card e, ao expandir, resolve a URL do anexo sob demanda.
-   * Elimina o problema de N+1 requests ao carregar a lista.
    */
   const toggleExpand = useCallback(async (med) => {
-    setExpandedId((prev) => {
-      if (prev === med.id) return null;
-      return med.id;
-    });
+    setExpandedId((prev) => (prev === med.id ? null : med.id));
 
-    // Resolve a URL do arquivo apenas uma vez por medição
-    if (fotoUrls[med.id] !== undefined) return; // já resolvido anteriormente
+    if (fotoUrls[med.id] !== undefined) return;
 
-    const firstAnexoId = Array.isArray(med.anexos) ? med.anexos[0] : null;
-    // Tenta resolver a URL via campo direto da medição (foto, fotoUrl, etc.)
     const diretUrl = getFotoUrl(med);
     if (diretUrl) {
       setFotoUrls((prev) => ({ ...prev, [med.id]: diretUrl }));
       return;
     }
 
+    const firstAnexoId = Array.isArray(med.anexos) ? med.anexos[0] : null;
     if (!firstAnexoId || typeof firstAnexoId !== "number") {
       setFotoUrls((prev) => ({ ...prev, [med.id]: null }));
       return;
     }
 
-    // Busca a URL pelo ID do arquivo (apenas quando o card é expandido)
     try {
       const fileRes = await api.get(`/files/${firstAnexoId}`);
-      const url = fileRes?.data?.data?.url || null;
-      setFotoUrls((prev) => ({ ...prev, [med.id]: url }));
-    } catch (_) {
+      setFotoUrls((prev) => ({ ...prev, [med.id]: fileRes?.data?.data?.url || null }));
+    } catch {
       setFotoUrls((prev) => ({ ...prev, [med.id]: null }));
     }
   }, [fotoUrls]);
 
+  // Deriva mês (YYYY-MM) a partir do filtro de data início para exportação
+  function derivarMesExport() {
+    if (filtros.dataInicio && /^\d{4}-\d{2}/.test(filtros.dataInicio)) {
+      return filtros.dataInicio.substring(0, 7);
+    }
+    return undefined;
+  }
+
+  const handleExportObras = async () => {
+    setExportErro(null);
+    setExportLoading(true);
+    try {
+      await downloadManagementCsv(exportPeriodo);
+    } catch {
+      setExportErro("Não foi possível gerar o arquivo. Tente novamente.");
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleExportMedicoes = async () => {
+    setExportErro(null);
+    setExportLoading(true);
+    try {
+      await downloadMedicoesCsv({
+        obraId: filtros.obra || undefined,
+        mes:    derivarMesExport(),
+      });
+    } catch {
+      setExportErro("Não foi possível gerar o arquivo. Tente novamente.");
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const totalSummary = statusSummary.enviada + statusSummary.aprovada +
+    statusSummary.rejeitada + statusSummary.rascunho;
+
   return (
     <Layout>
       <div className="page-container">
-        <h1 className="page-title">Meus Relatórios</h1>
-        <p style={{
-          fontSize: "var(--tamanho-fonte-base)",
-          color: "var(--cor-texto-secundario)",
-          marginBottom: "var(--espacamento-lg)",
-        }}>
-          Visualize as medições que você enviou com todos os detalhes.
+        <h1 className="page-title">Relatórios de Medições</h1>
+        <p className="page-description">
+          Acompanhe as medições enviadas pela equipe de campo e exporte relatórios.
         </p>
 
         {/* ── Painel de Filtros ─────────────────────────────────────────────── */}
@@ -147,7 +200,7 @@ function MeusRelatorios() {
           </p>
           <div style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
             gap: "var(--espacamento-md)",
             alignItems: "end",
           }}>
@@ -162,12 +215,23 @@ function MeusRelatorios() {
               </select>
             </div>
 
+            {/* Filtro por Responsável */}
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="rf-resp">Responsável</label>
+              <select id="rf-resp" name="responsavel" value={filtros.responsavel} onChange={handleFiltro}>
+                <option value="">Todos</option>
+                {responsaveis.map((u) => (
+                  <option key={u.id} value={u.id}>{u.nome}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Filtro por Status */}
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label htmlFor="rf-status">Status</label>
               <select id="rf-status" name="status" value={filtros.status} onChange={handleFiltro}>
                 <option value="">Todos</option>
-                <option value="enviada">Enviada</option>
+                <option value="enviada">Aguardando revisão</option>
                 <option value="aprovada">Aprovada</option>
                 <option value="rejeitada">Rejeitada</option>
                 <option value="rascunho">Rascunho</option>
@@ -179,7 +243,7 @@ function MeusRelatorios() {
               <label htmlFor="rf-tipo">Tipo de serviço</label>
               <select id="rf-tipo" name="tipoServico" value={filtros.tipoServico} onChange={handleFiltro}>
                 <option value="">Todos</option>
-              {TIPOS_SERVICO.map((t) => (
+                {TIPOS_SERVICO.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
@@ -210,6 +274,98 @@ function MeusRelatorios() {
           </div>
         </div>
 
+        {/* ── Exportação CSV ───────────────────────────────────────────────── */}
+        <div
+          className="form-container"
+          style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
+        >
+          <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
+            Exportar dados
+          </p>
+          <div style={{ display: "flex", gap: "var(--espacamento-md)", flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label htmlFor="rf-periodo">Período (painel de obras)</label>
+              <select
+                id="rf-periodo"
+                value={exportPeriodo}
+                onChange={(e) => setExportPeriodo(Number(e.target.value))}
+                style={{ minWidth: 160 }}
+              >
+                <option value={7}>Últimos 7 dias</option>
+                <option value={30}>Últimos 30 dias</option>
+                <option value={60}>Últimos 60 dias</option>
+                <option value={90}>Últimos 90 dias</option>
+              </select>
+            </div>
+            <button
+              className="button-secondary"
+              onClick={handleExportObras}
+              disabled={exportLoading}
+              style={{ padding: "10px 18px" }}
+            >
+              {exportLoading ? "Gerando..." : "⬇ Painel de obras (CSV)"}
+            </button>
+            <button
+              className="button-secondary"
+              onClick={handleExportMedicoes}
+              disabled={exportLoading}
+              style={{ padding: "10px 18px" }}
+            >
+              {exportLoading ? "Gerando..." : "⬇ Boletim de medições (CSV)"}
+            </button>
+          </div>
+          {exportErro && (
+            <p className="erro-msg" style={{ marginTop: "var(--espacamento-sm)", marginBottom: 0 }}>
+              {exportErro}
+            </p>
+          )}
+          <p style={{
+            marginTop: "var(--espacamento-sm)",
+            marginBottom: 0,
+            fontSize: "var(--tamanho-fonte-pequena)",
+            color: "var(--cor-texto-secundario)",
+          }}>
+            O boletim de medições aplica os filtros de obra e período ativos nesta tela.
+          </p>
+        </div>
+
+        {/* ── Resumo de status (clicável para filtrar) ─────────────────────── */}
+        {!loading && totalSummary > 0 && (
+          <div style={{
+            display: "flex",
+            gap: "var(--espacamento-sm)",
+            flexWrap: "wrap",
+            marginBottom: "var(--espacamento-md)",
+          }}>
+            {[
+              { key: "enviada",   label: "Aguardando revisão", bg: "var(--cor-aviso-clara)",   color: "var(--cor-aviso)"            },
+              { key: "aprovada",  label: "Aprovadas",           bg: "var(--cor-sucesso-clara)", color: "var(--cor-sucesso)"          },
+              { key: "rejeitada", label: "Rejeitadas",          bg: "var(--cor-perigo-clara)",  color: "var(--cor-perigo)"           },
+              { key: "rascunho",  label: "Rascunhos",           bg: "var(--cor-fundo)",         color: "var(--cor-texto-secundario)" },
+            ].map(({ key, label, bg, color }) =>
+              statusSummary[key] > 0 && (
+                <button
+                  key={key}
+                  onClick={() => toggleStatusFiltro(key)}
+                  title={filtros.status === key ? "Remover filtro" : `Filtrar por: ${label}`}
+                  style={{
+                    padding: "5px 14px",
+                    borderRadius: "20px",
+                    cursor: "pointer",
+                    border: filtros.status === key ? `2px solid ${color}` : "2px solid transparent",
+                    background: bg,
+                    color,
+                    fontWeight: 700,
+                    fontSize: "var(--tamanho-fonte-pequena)",
+                  }}
+                >
+                  {statusSummary[key]} {label}
+                </button>
+              )
+            )}
+          </div>
+        )}
+
         {/* ── Feedbacks ────────────────────────────────────────────────────── */}
         {erro && <p className="erro-msg">{erro}</p>}
         {loading && (
@@ -220,30 +376,37 @@ function MeusRelatorios() {
 
         {!erro && !loading && medicoes.length === 0 && (
           <div className="card" style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
-            <p style={{ color: "var(--cor-texto-secundario)" }}>
+            <p style={{ marginBottom: 0, color: "var(--cor-texto-secundario)" }}>
               {temFiltroAtivo
-                ? "Nenhuma medição corresponde aos filtros informados."
-                : "Você ainda não enviou nenhuma medição."}
+                ? "Nenhuma medição encontrada para os filtros selecionados. Tente ajustar os critérios de busca."
+                : "Nenhuma medição registrada ainda."}
             </p>
           </div>
         )}
 
         {!loading && medicoes.length > 0 && (
           <>
-            <p style={{
-              marginBottom: "var(--espacamento-md)",
-              color: "var(--cor-texto-secundario)",
-              fontSize: "var(--tamanho-fonte-pequena)",
-            }}>
-              {medicoes.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
-              {temFiltroAtivo ? " (filtros ativos)" : ""}.
-            </p>
+              <p style={{
+                marginBottom: "var(--espacamento-md)",
+                color: "var(--cor-texto-secundario)",
+                fontSize: "var(--tamanho-fonte-pequena)",
+              }}>
+                Exibindo {medicoes.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
+                {temFiltroAtivo ? " (filtros ativos)" : ""}.
+              </p>
 
             {medicoes.map((m) => {
-              // URL resolvida sob demanda ao expandir o card (fotoUrls[m.id] === undefined = ainda não requisitado)
               const fotoUrl   = fotoUrls[m.id] !== undefined ? fotoUrls[m.id] : getFotoUrl(m);
               const expanded  = expandedId === m.id;
               const tipoLabel = getTipoServicoLabel(m.tipoServico);
+
+              // Data da medição (campo data) e data de envio (createdAt)
+              const dataMedicao = m.data
+                ? new Date(m.data).toLocaleDateString("pt-BR")
+                : null;
+              const dataEnvio = m.createdAt
+                ? `${new Date(m.createdAt).toLocaleDateString("pt-BR")} às ${new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                : null;
 
               return (
                 <div key={m.id} className="card" style={{ marginBottom: "var(--espacamento-md)" }}>
@@ -262,7 +425,6 @@ function MeusRelatorios() {
                     onKeyDown={(e) => e.key === "Enter" && toggleExpand(m)}
                   >
                     <div>
-                      {/* Nome da obra (vem do JOIN) ou ID */}
                       <p style={{ fontWeight: 700, fontSize: "var(--tamanho-fonte-grande)", margin: 0 }}>
                         {m.obraNome
                           ? `Obra: ${m.obraNome}`
@@ -270,23 +432,36 @@ function MeusRelatorios() {
                             ? `Obra #${m.obra}`
                             : "Obra não identificada"}
                       </p>
-                      <p style={{ margin: "4px 0 0 0", color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-                        {m.createdAt
-                          ? `${new Date(m.createdAt).toLocaleDateString("pt-BR")} às ${new Date(m.createdAt).toLocaleTimeString("pt-BR")}`
-                          : "Data não disponível"}
+                      <p style={{ margin: "2px 0 0 0", color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
+                        {dataMedicao && <>Medição: {dataMedicao}{dataEnvio && ` · Enviado em: ${dataEnvio}`}</>}
+                        {!dataMedicao && dataEnvio && <>Enviado em: {dataEnvio}</>}
                         {tipoLabel && ` · ${tipoLabel}`}
                       </p>
+                      {m.responsavelNome && (
+                        <p style={{ margin: "2px 0 0 0", color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
+                          Responsável: {m.responsavelNome}
+                        </p>
+                      )}
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: "var(--espacamento-sm)" }}>
                       <span
                         className={`status-badge ${STATUS_CLASS[m.status] || "pendente"}`}
                         style={{
+                          display: "inline-block",
                           padding: "5px 12px",
                           borderRadius: "20px",
                           fontSize: "var(--tamanho-fonte-pequena)",
                           fontWeight: 700,
                           whiteSpace: "nowrap",
+                          background: STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso-clara)"
+                                    : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo-clara)"
+                                    : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-fundo)"
+                                    : "var(--cor-aviso-clara)",
+                          color:      STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso)"
+                                    : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo)"
+                                    : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-texto-secundario)"
+                                    : "var(--cor-aviso)",
                         }}
                       >
                         {STATUS_LABEL[m.status] || m.status || "Enviada"}
@@ -300,8 +475,27 @@ function MeusRelatorios() {
                   {/* ── Detalhes expandidos ──────────────────────────────── */}
                   {expanded && (
                     <>
+                      {/* Motivo de rejeição */}
+                      {m.status === "rejeitada" && m.motivoRejeicao && (
+                        <div style={{
+                          padding: "var(--espacamento-md)",
+                          background: "var(--cor-fundo-erro, #fef2f2)",
+                          border: "1px solid var(--cor-erro, #ef4444)",
+                          borderRadius: "var(--borda-radius)",
+                          marginBottom: "var(--espacamento-md)",
+                        }}>
+                          <strong>Motivo da rejeição:</strong>
+                          <p style={{ margin: "4px 0 0 0" }}>{m.motivoRejeicao}</p>
+                        </div>
+                      )}
+
                       {/* Área e Serviço */}
                       <div className="details-grid-2">
+                        {m.areaNome && (
+                          <p style={{ margin: 0 }}>
+                            <strong>Ambiente:</strong> {m.areaNome}
+                          </p>
+                        )}
                         {m.area != null && !isNaN(m.area) && (
                           <p style={{ margin: 0 }}>
                             <strong>Área calculada:</strong> {Number(m.area).toFixed(2)} m²
@@ -317,14 +511,9 @@ function MeusRelatorios() {
                             <strong>Tipo de serviço:</strong> {tipoLabel}
                           </p>
                         )}
-                        {m.descricao && (
-                          <p style={{ margin: 0 }}>
-                            <strong>Descrição:</strong> {m.descricao}
-                          </p>
-                        )}
                       </div>
 
-                      {/* Itens da medição (tabela resumida) */}
+                      {/* Itens da medição (tabela com valor) */}
                       {m.itens.length > 0 && (
                         <div style={{ marginBottom: "var(--espacamento-md)" }}>
                           <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-sm)" }}>
@@ -335,16 +524,20 @@ function MeusRelatorios() {
                               <thead>
                                 <tr>
                                   <th>Descrição</th>
-                                  <th>Qtd.</th>
+                                  <th>Quantidade</th>
                                   <th>Unidade</th>
-                                  <th>Local</th>
+                                  <th>Ambiente/Local</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {m.itens.map((item, idx) => (
                                   <tr key={idx}>
                                     <td>{item.descricao || "—"}</td>
-                                    <td>{item.quantidade != null && !isNaN(item.quantidade) ? Number(item.quantidade).toFixed(2) : "—"}</td>
+                                    <td>
+                                      {item.quantidade != null && !isNaN(item.quantidade)
+                                        ? Number(item.quantidade).toFixed(2)
+                                        : "—"}
+                                    </td>
                                     <td>{item.unidade || "—"}</td>
                                     <td>{item.local || "—"}</td>
                                   </tr>
@@ -378,7 +571,7 @@ function MeusRelatorios() {
                             onClick={(e) => { e.stopPropagation(); navigate(`/medicoes?editar=${m.id}`); }}
                             style={{ padding: "8px 18px" }}
                           >
-                            {m.status === "rascunho" ? "Editar rascunho" : "Corrigir e reenviar"}
+                            {m.status === "rascunho" ? "Continuar rascunho" : "Corrigir e reenviar"}
                           </button>
                         </div>
                       )}
@@ -411,8 +604,9 @@ function MeusRelatorios() {
                 </div>
               );
             })}
+
             {/* ── Paginação ──────────────────────────────────────────── */}
-            {Math.ceil(totalItems / 20) > 1 && (
+            {totalPages > 1 && (
               <div style={{
                 display: "flex",
                 justifyContent: "center",
@@ -429,12 +623,12 @@ function MeusRelatorios() {
                   ← Anterior
                 </button>
                 <span style={{ fontSize: "var(--tamanho-fonte-base)", color: "var(--cor-texto-secundario)" }}>
-                  Página {currentPage} de {Math.ceil(totalItems / 20)}
+                  Página {currentPage} de {totalPages}
                 </span>
                 <button
                   className="button-secondary"
-                  onClick={() => setCurrentPage((p) => Math.min(Math.ceil(totalItems / 20), p + 1))}
-                  disabled={currentPage === Math.ceil(totalItems / 20) || loading}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages || loading}
                   style={{ padding: "8px 18px" }}
                 >
                   Próxima →

@@ -86,7 +86,7 @@ function EnviarMedicao() {
     if (obras.length === 1 && !modoEdicao) {
       setForm((prev) => ({ ...prev, obra: String(obras[0].id) }));
     }
-  }, [obras]);
+  }, [obras, modoEdicao]);
 
   useEffect(() => {
     return () => {

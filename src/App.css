@@ -8,13 +8,6 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: var(--fonte-principal, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
-  font-size: var(--tamanho-fonte-base, 16px);
-  line-height: 1.6;
-  color: var(--cor-texto-principal, #1f2937);
-  background: var(--cor-fundo, #f9fafb);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -49,22 +42,11 @@ ul {
   padding-left: 20px;
 }
 
-/* ========================================
-   ACESSIBILIDADE E MELHORIAS VISUAIS
-   ======================================== */
+/* Acessibilidade */
 :focus-visible {
-  outline: 3px solid var(--cor-primaria);
+  outline: 2px solid var(--cor-primaria);
   outline-offset: 2px;
-  border-radius: 4px;
-}
-
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-a:focus-visible {
-  outline: 3px solid var(--cor-primaria);
-  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* Melhorar seleção de texto */
@@ -87,12 +69,6 @@ html {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* Melhor acessibilidade para foco */
-*:focus-visible {
-  outline: 2px solid var(--cor-primaria, #3b82f6);
-  outline-offset: 2px;
 }
 
 /* Loading states */
