@@ -28,8 +28,7 @@ function EnviarMedicao() {
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [submitMode, setSubmitMode] = useState("enviada");
-  const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState(null);
   const { obras, loadingObras } = useObras(100);
 
   useEffect(() => {
@@ -51,6 +50,14 @@ function EnviarMedicao() {
     }
   }, [obras]);
 
+  useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
   // ─── Cálculos automáticos de área e volume ──────────────────────────────────
   const comprimento = Number(form.comprimento) || 0;
   const largura = Number(form.largura) || 0;
@@ -68,14 +75,18 @@ function EnviarMedicao() {
   function handleFotoChange(event) {
     const file = event.target.files[0];
     if (file) {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
       setFoto(file);
       setPreview(URL.createObjectURL(file));
     }
   }
 
   // ─── Envio do formulário ─────────────────────────────────────────────────────
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function handleSubmit(mode = "enviada") {
+    if (loadingMode) return;
+
     setError("");
     setSuccess("");
 
@@ -103,7 +114,7 @@ function EnviarMedicao() {
       area: form.area,
       tipoServico: form.tipoServico,
       observacoes: form.observacoes,
-      status: submitMode,
+      status: mode,
       comprimento: Number(form.comprimento),
       largura: Number(form.largura),
       altura: Number(form.altura),
@@ -122,8 +133,15 @@ function EnviarMedicao() {
       ],
     };
 
+    if (!navigator.onLine && foto) {
+      setError("Não é possível salvar foto em modo offline nesta tela. Remova a foto para salvar offline ou reconecte à internet.");
+      return;
+    }
+
+    let fullBody = body;
+
     try {
-      setLoading(true);
+      setLoadingMode(mode);
       let anexoId = null;
 
       // Upload da foto antes de criar a medição, se houver
@@ -139,7 +157,7 @@ function EnviarMedicao() {
       }
 
       // Criar medição no back-end, incluindo dimensões brutas e campos de área/serviço
-      const fullBody = { ...body, ...(anexoId ? { anexos: [anexoId] } : {}) };
+      fullBody = { ...body, ...(anexoId ? { anexos: [anexoId] } : {}) };
 
       if (!navigator.onLine) {
         await enqueueSyncOperation("medicao", fullBody);
@@ -147,7 +165,7 @@ function EnviarMedicao() {
         await createMedicao(fullBody);
       }
 
-      const acaoLabel = submitMode === "rascunho" ? "Rascunho salvo" : "Medição enviada";
+      const acaoLabel = mode === "rascunho" ? "Rascunho salvo" : "Medição enviada";
       setSuccess(
         navigator.onLine
           ? `${acaoLabel} com sucesso!`
@@ -168,14 +186,14 @@ function EnviarMedicao() {
     } catch (err) {
       const status = err?.response?.status;
       if (!navigator.onLine || !status) {
-        await enqueueSyncOperation("medicao", body);
-        const acaoLabel = submitMode === "rascunho" ? "Rascunho" : "Medição";
+        await enqueueSyncOperation("medicao", fullBody);
+        const acaoLabel = mode === "rascunho" ? "Rascunho" : "Medição";
         setSuccess(`Sem conexão: ${acaoLabel.toLowerCase()} salvo offline e será sincronizado ao reconectar.`);
       } else {
         setError("Erro ao enviar medição: " + extractApiMessage(err));
       }
     } finally {
-      setLoading(false);
+      setLoadingMode(null);
     }
   }
 
@@ -188,7 +206,13 @@ function EnviarMedicao() {
           Os campos marcados com <strong>*</strong> são obrigatórios.
         </p>
 
-        <form onSubmit={handleSubmit} className="form-container">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleSubmit("enviada");
+          }}
+          className="form-container"
+        >
 
           {/* ─── Seleção de Obra ─────────────────────────────────────────────
               O back-end filtra automaticamente conforme o perfil do usuário:
@@ -370,18 +394,24 @@ function EnviarMedicao() {
             <button
               type="submit"
               className="button-secondary"
-              disabled={loading || loadingObras || obras.length === 0}
-              onClick={() => setSubmitMode("rascunho")}
+              disabled={loadingMode !== null || loadingObras || obras.length === 0}
+              onClick={(event) => {
+                event.preventDefault();
+                handleSubmit("rascunho");
+              }}
             >
-              {loading && submitMode === "rascunho" ? "Salvando..." : "Salvar Rascunho"}
+              {loadingMode === "rascunho" ? "Salvando..." : "Salvar Rascunho"}
             </button>
             <button
               type="submit"
               className="button-primary"
-              disabled={loading || loadingObras || obras.length === 0}
-              onClick={() => setSubmitMode("enviada")}
+              disabled={loadingMode !== null || loadingObras || obras.length === 0}
+              onClick={(event) => {
+                event.preventDefault();
+                handleSubmit("enviada");
+              }}
             >
-              {loading && submitMode === "enviada" ? "Enviando medição..." : "Enviar Medição"}
+              {loadingMode === "enviada" ? "Enviando medição..." : "Enviar Medição"}
             </button>
           </div>
         </form>

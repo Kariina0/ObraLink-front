@@ -5,7 +5,20 @@ import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
 import "../styles/pages.css";
 
-const CLIMAS = ["ensolarado", "nublado", "chuvoso", "ventania", "instavel"];
+// Separa valor da API do rótulo exibido na interface.
+// "instavel" não tem acento no banco, mas a UI deve mostrar "Instável".
+const CLIMAS = [
+  { value: "ensolarado", label: "Ensolarado" },
+  { value: "nublado",    label: "Nublado" },
+  { value: "chuvoso",    label: "Chuvoso" },
+  { value: "ventania",   label: "Ventania" },
+  { value: "instavel",   label: "Instável" },
+];
+
+// Mapa rápido: valor da API → rótulo legível
+const CLIMA_LABEL = Object.fromEntries(
+  CLIMAS.map(({ value, label }) => [value, label])
+);
 
 export default function DiarioObra() {
   const [form, setForm] = useState({
@@ -21,7 +34,11 @@ export default function DiarioObra() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Estado separado para a seção de recentes — não contamina mensagens do formulário
   const [recentes, setRecentes] = useState([]);
+  const [loadingRecentes, setLoadingRecentes] = useState(true);
+  const [errorRecentes, setErrorRecentes] = useState("");
 
   // Pré-seleciona automaticamente quando houver apenas uma obra vinculada
   useEffect(() => {
@@ -30,12 +47,23 @@ export default function DiarioObra() {
     }
   }, [obras]);
 
-  // Carrega diários recentes
+  // Carrega diários recentes ao montar
   useEffect(() => {
-    listMeusDiarios({ page: 1, limit: 5 })
-      .then((data) => setRecentes(Array.isArray(data?.data) ? data.data : []))
-      .catch(() => setError("Não foi possível carregar dados do diário."));
+    carregarRecentes();
   }, []);
+
+  async function carregarRecentes() {
+    setLoadingRecentes(true);
+    try {
+      const data = await listMeusDiarios({ page: 1, limit: 5 });
+      setRecentes(Array.isArray(data?.data) ? data.data : []);
+      setErrorRecentes("");
+    } catch {
+      setErrorRecentes("Não foi possível carregar os diários recentes.");
+    } finally {
+      setLoadingRecentes(false);
+    }
+  }
 
   function handleChange(event) {
     setForm((prev) => ({ ...prev, [event.target.name]: event.target.value }));
@@ -83,9 +111,10 @@ export default function DiarioObra() {
         ocorrencias: "",
         observacoesGerais: "",
       }));
-
-      const diariosData = await listMeusDiarios({ page: 1, limit: 5 });
-      setRecentes(Array.isArray(diariosData?.data) ? diariosData.data : []);
+      // Atualiza lista de recentes silenciosamente (sem spinner)
+      listMeusDiarios({ page: 1, limit: 5 })
+        .then((data) => setRecentes(Array.isArray(data?.data) ? data.data : []))
+        .catch(() => {});
     } catch (err) {
       setError(extractApiMessage(err, "Erro ao registrar diário."));
     } finally {
@@ -93,46 +122,88 @@ export default function DiarioObra() {
     }
   }
 
+  // Usa o fuso horário do Brasil para evitar off-by-one de UTC na exibição de datas
+  function formatarData(isoString) {
+    if (!isoString) return "—";
+    return new Date(isoString).toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
+  }
+
+  const semObras = !loadingObras && obras.length === 0;
+
   return (
     <Layout>
       <div className="page-container">
         <h1 className="page-title">Diário de Obra</h1>
         <p className="page-description">
-          Registre as atividades diárias da obra para manter o escritório atualizado.
+          Registre as atividades diárias da obra para manter o escritório
+          atualizado.
         </p>
 
         <form onSubmit={handleSubmit} className="form-container">
+          {/* Obra */}
           <div className="form-group">
             <label htmlFor="obra">Obra *</label>
             {loadingObras ? (
               <select disabled>
                 <option>Carregando obras...</option>
               </select>
+            ) : semObras ? (
+              <p className="erro-msg" style={{ margin: "4px 0 0" }}>
+                Nenhuma obra vinculada à sua conta. Contate o administrador.
+              </p>
             ) : (
-              <select id="obra" name="obra" value={form.obra} onChange={handleChange} required>
-                {obras.length > 1 && <option value="">Selecione a obra</option>}
+              <select
+                id="obra"
+                name="obra"
+                value={form.obra}
+                onChange={handleChange}
+              >
+                {obras.length > 1 && (
+                  <option value="">Selecione a obra</option>
+                )}
                 {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>{obra.nome || `Obra #${obra.id}`}</option>
+                  <option key={obra.id} value={obra.id}>
+                    {obra.nome || `Obra #${obra.id}`}
+                  </option>
                 ))}
               </select>
             )}
           </div>
 
+          {/* Data */}
           <div className="form-group">
             <label htmlFor="data">Data *</label>
-            <input id="data" name="data" type="date" value={form.data} onChange={handleChange} required />
+            <input
+              id="data"
+              name="data"
+              type="date"
+              value={form.data}
+              onChange={handleChange}
+              required
+            />
           </div>
 
+          {/* Clima */}
           <div className="form-group">
             <label htmlFor="clima">Clima</label>
-            <select id="clima" name="clima" value={form.clima} onChange={handleChange}>
+            <select
+              id="clima"
+              name="clima"
+              value={form.clima}
+              onChange={handleChange}
+            >
               <option value="">Selecione</option>
-              {CLIMAS.map((item) => (
-                <option key={item} value={item}>{item}</option>
+              {CLIMAS.map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
               ))}
             </select>
           </div>
 
+          {/* Atividades */}
           <div className="form-group">
             <label htmlFor="atividades">Atividades do dia *</label>
             <textarea
@@ -146,6 +217,7 @@ export default function DiarioObra() {
             />
           </div>
 
+          {/* Ocorrências */}
           <div className="form-group">
             <label htmlFor="ocorrencias">Ocorrências</label>
             <textarea
@@ -158,6 +230,7 @@ export default function DiarioObra() {
             />
           </div>
 
+          {/* Observações */}
           <div className="form-group">
             <label htmlFor="observacoesGerais">Observações gerais</label>
             <textarea
@@ -172,25 +245,54 @@ export default function DiarioObra() {
           {error && <p className="erro-msg">{error}</p>}
           {success && <p className="success-msg">{success}</p>}
 
-          <button className="button-primary" type="submit" disabled={loading || loadingObras}>
-            {loading ? "Salvando diário..." : "Salvar Diário"}
+          <button
+            className="button-primary"
+            type="submit"
+            disabled={loading || loadingObras || semObras}
+          >
+            {loading ? "Salvando..." : "Salvar Diário"}
           </button>
         </form>
 
-        <h3 style={{ marginTop: "var(--espacamento-xl)" }}>Últimos diários enviados</h3>
-        {recentes.length === 0 ? (
+        {/* Seção de diários recentes */}
+        <h3 style={{ marginTop: "var(--espacamento-xl)" }}>
+          Últimos diários enviados
+        </h3>
+
+        {loadingRecentes ? (
           <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
-            Nenhum diário encontrado.
+            Carregando...
+          </div>
+        ) : errorRecentes ? (
+          <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
+            <p className="erro-msg" style={{ margin: 0 }}>
+              {errorRecentes}
+            </p>
+          </div>
+        ) : recentes.length === 0 ? (
+          <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
+            Nenhum diário registrado ainda.
           </div>
         ) : (
           recentes.map((d) => (
-            <div key={d.id} className="card" style={{ marginTop: "var(--espacamento-sm)" }}>
-              <strong>{new Date(d.data).toLocaleDateString("pt-BR")}</strong>
+            <div
+              key={d.id}
+              className="card"
+              style={{ marginTop: "var(--espacamento-sm)" }}
+            >
+              <strong>{formatarData(d.data)}</strong>
+              {d.obraNome && (
+                <p style={{ marginTop: "4px", color: "var(--cor-texto-secundario, #666)" }}>
+                  {d.obraNome}
+                </p>
+              )}
               <p style={{ marginTop: "6px" }}>
-                <strong>Clima:</strong> {d.clima || "não informado"}
+                <strong>Clima:</strong>{" "}
+                {CLIMA_LABEL[d.clima] ?? "Não informado"}
               </p>
               <p style={{ marginTop: "6px" }}>
-                <strong>Atividades:</strong> {Array.isArray(d.atividades) ? d.atividades.length : 0} registro(s)
+                <strong>Atividades:</strong>{" "}
+                {Array.isArray(d.atividades) ? d.atividades.length : 0} registro(s)
               </p>
             </div>
           ))
