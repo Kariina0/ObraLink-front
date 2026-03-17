@@ -1,10 +1,11 @@
 // src/pages/EnviarMedicao.jsx
-// Nova Medição — disponível para encarregado, supervisor e admin.
-// O select de obra carrega apenas as obras vinculadas ao usuário logado
-// (o back-end já filtra por perfil: encarregado vê só suas obras).
+// Registrar / Editar Medição — disponível para encarregado, supervisor e admin.
+// Quando acessada via /medicoes?editar=:id, carrega a medição existente para edição.
+// O select de obra carrega apenas as obras vinculadas ao usuário logado.
 import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { createMedicao } from "../services/medicoesService";
+import { createMedicao, getMedicaoById, updateMedicao } from "../services/medicoesService";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
@@ -13,6 +14,10 @@ import { enqueueSyncOperation } from "../utils/syncQueue";
 import "../styles/pages.css";
 
 function EnviarMedicao() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editarId = searchParams.get("editar") ? Number(searchParams.get("editar")) : null;
+  const modoEdicao = editarId !== null && editarId > 0;
 
   const [form, setForm] = useState({
     obra: "",
@@ -29,6 +34,7 @@ function EnviarMedicao() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loadingMode, setLoadingMode] = useState(null);
+  const [loadingEdicao, setLoadingEdicao] = useState(modoEdicao);
   const { obras, loadingObras } = useObras(100);
 
   useEffect(() => {
@@ -43,9 +49,41 @@ function EnviarMedicao() {
     return () => window.removeEventListener("sync:completed", onSyncCompleted);
   }, []);
 
+  // Carrega a medição existente ao abrir em modo de edição
+  useEffect(() => {
+    if (!modoEdicao) return;
+    let cancelled = false;
+
+    async function carregarMedicao() {
+      try {
+        setLoadingEdicao(true);
+        const m = await getMedicaoById(editarId);
+        if (cancelled) return;
+        setForm({
+          obra:         m.obra != null ? String(m.obra) : "",
+          area:         m.area         || m.areaNome     || "",
+          tipoServico:  m.tipoServico   || "",
+          comprimento:  m.comprimento   != null ? String(m.comprimento)  : "",
+          largura:      m.largura       != null ? String(m.largura)      : "",
+          altura:       m.altura        != null ? String(m.altura)       : "",
+          observacoes:  m.observacoes   || "",
+        });
+      } catch (err) {
+        if (!cancelled) {
+          setError("Não foi possível carregar a medição para edição. " + extractApiMessage(err));
+        }
+      } finally {
+        if (!cancelled) setLoadingEdicao(false);
+      }
+    }
+
+    carregarMedicao();
+    return () => { cancelled = true; };
+  }, [modoEdicao, editarId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Pré-seleciona automaticamente quando houver apenas uma obra vinculada
   useEffect(() => {
-    if (obras.length === 1) {
+    if (obras.length === 1 && !modoEdicao) {
       setForm((prev) => ({ ...prev, obra: String(obras[0].id) }));
     }
   }, [obras]);
@@ -144,8 +182,7 @@ function EnviarMedicao() {
       setLoadingMode(mode);
       let anexoId = null;
 
-      // Upload da foto antes de criar a medição, se houver
-      // O back-end exige: obra (id), tipoArquivo e descricao (mín 3 chars)
+      // Upload da foto antes de criar/atualizar a medição, se houver
       if (foto) {
         const areaLabel = form.area || "medição";
         const uploadRes = await uploadFile(foto, {
@@ -156,33 +193,40 @@ function EnviarMedicao() {
         anexoId = uploadRes?.id ? Number(uploadRes.id) : null;
       }
 
-      // Criar medição no back-end, incluindo dimensões brutas e campos de área/serviço
       fullBody = { ...body, ...(anexoId ? { anexos: [anexoId] } : {}) };
 
       if (!navigator.onLine) {
         await enqueueSyncOperation("medicao", fullBody);
+      } else if (modoEdicao) {
+        await updateMedicao(editarId, fullBody);
       } else {
         await createMedicao(fullBody);
       }
 
-      const acaoLabel = mode === "rascunho" ? "Rascunho salvo" : "Medição enviada";
+      const acaoLabel = modoEdicao
+        ? (mode === "rascunho" ? "Rascunho atualizado" : "Medição atualizada")
+        : (mode === "rascunho" ? "Rascunho salvo"      : "Medição enviada");
+
       setSuccess(
         navigator.onLine
           ? `${acaoLabel} com sucesso!`
           : `Sem internet: ${acaoLabel.toLowerCase()} para sincronização automática.`,
       );
-      // Limpa o formulário, mas mantém a obra se só havia uma opção
-      setForm({
-        obra: obras.length === 1 ? String(obras[0].id) : "",
-        area: "",
-        tipoServico: "",
-        comprimento: "",
-        largura: "",
-        altura: "",
-        observacoes: "",
-      });
-      setFoto(null);
-      setPreview(null);
+
+      if (!modoEdicao) {
+        // Em modo de criação: limpa o formulário, mantendo obra se única
+        setForm({
+          obra: obras.length === 1 ? String(obras[0].id) : "",
+          area: "",
+          tipoServico: "",
+          comprimento: "",
+          largura: "",
+          altura: "",
+          observacoes: "",
+        });
+        setFoto(null);
+        setPreview(null);
+      }
     } catch (err) {
       const status = err?.response?.status;
       if (!navigator.onLine || !status) {
@@ -190,7 +234,11 @@ function EnviarMedicao() {
         const acaoLabel = mode === "rascunho" ? "Rascunho" : "Medição";
         setSuccess(`Sem conexão: ${acaoLabel.toLowerCase()} salvo offline e será sincronizado ao reconectar.`);
       } else {
-        setError("Erro ao enviar medição: " + extractApiMessage(err));
+        setError(
+          modoEdicao
+            ? "Erro ao atualizar medição: " + extractApiMessage(err)
+            : "Erro ao enviar medição: " + extractApiMessage(err)
+        );
       }
     } finally {
       setLoadingMode(null);
@@ -200,12 +248,23 @@ function EnviarMedicao() {
   return (
     <Layout>
       <div className="page-container">
-        <h1 className="page-title">Nova Medição</h1>
+        <h1 className="page-title">
+          {modoEdicao ? "Editar Medição" : "Registrar Nova Medição"}
+        </h1>
         <p style={{ fontSize: "var(--tamanho-fonte-grande)", color: "var(--cor-texto-secundario)", marginBottom: "var(--espacamento-xl)", lineHeight: "1.6" }}>
-          Registre as dimensões e informações da medição realizada na obra.
-          Os campos marcados com <strong>*</strong> são obrigatórios.
+          {modoEdicao
+            ? "Corrija os dados abaixo e reenvie a medição para revisão."
+            : <>Registre as dimensões e informações da medição realizada na obra. Os campos marcados com <strong>*</strong> são obrigatórios.</>
+          }
         </p>
 
+        {loadingEdicao && (
+          <p style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
+            Carregando dados da medição...
+          </p>
+        )}
+
+        {!loadingEdicao && (
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -213,7 +272,6 @@ function EnviarMedicao() {
           }}
           className="form-container"
         >
-
           {/* ─── Seleção de Obra ─────────────────────────────────────────────
               O back-end filtra automaticamente conforme o perfil do usuário:
               encarregados veem apenas as obras às quais estão vinculados. */}
@@ -388,33 +446,70 @@ function EnviarMedicao() {
           </div>
 
           {error && <p className="erro-msg">{error}</p>}
-          {success && <p className="success-msg">{success}</p>}
 
-          <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
-            <button
-              type="submit"
-              className="button-secondary"
-              disabled={loadingMode !== null || loadingObras || obras.length === 0}
-              onClick={(event) => {
-                event.preventDefault();
-                handleSubmit("rascunho");
-              }}
-            >
-              {loadingMode === "rascunho" ? "Salvando..." : "Salvar Rascunho"}
-            </button>
-            <button
-              type="submit"
-              className="button-primary"
-              disabled={loadingMode !== null || loadingObras || obras.length === 0}
-              onClick={(event) => {
-                event.preventDefault();
-                handleSubmit("enviada");
-              }}
-            >
-              {loadingMode === "enviada" ? "Enviando medição..." : "Enviar Medição"}
-            </button>
-          </div>
+          {success ? (
+            <div>
+              <p className="success-msg">{success}</p>
+              <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap", marginTop: "var(--espacamento-md)" }}>
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => navigate("/medicoes-lista")}
+                  style={{ width: "auto", marginTop: 0 }}
+                >
+                  Ver minhas medições
+                </button>
+                {!modoEdicao && (
+                  <button
+                    type="button"
+                    className="button-secondary"
+                    onClick={() => setSuccess("")}
+                  >
+                    Registrar outra medição
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
+              <button
+                type="submit"
+                className="button-secondary"
+                disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleSubmit("rascunho");
+                }}
+              >
+                {loadingMode === "rascunho" ? "Salvando..." : "Salvar como rascunho"}
+              </button>
+              <button
+                type="submit"
+                className="button-primary"
+                disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleSubmit("enviada");
+                }}
+              >
+                {loadingMode === "enviada"
+                  ? (modoEdicao ? "Atualizando..." : "Enviando medição...")
+                  : (modoEdicao ? "Reenviar para revisão" : "Enviar medição")}
+              </button>
+              {modoEdicao && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={() => navigate("/medicoes-lista")}
+                  disabled={loadingMode !== null}
+                >
+                  Cancelar edição
+                </button>
+              )}
+            </div>
+          )}
         </form>
+        )}
       </div>
     </Layout>
   );

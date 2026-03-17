@@ -28,6 +28,7 @@ export function normalizeMedicao(m) {
     tipoServico:     m.tipoServico  || null,
     observacoes:     m.observacoes  || firstItem.observacoes,
     status:          m.status       || "enviada",
+    motivoRejeicao:  m.motivoRejeicao || null,
     itens,
     anexos:          Array.isArray(m.anexos) ? m.anexos : [],
     foto:            m.foto || null,

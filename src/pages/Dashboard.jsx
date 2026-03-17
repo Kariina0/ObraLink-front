@@ -73,7 +73,7 @@ const Dashboard = () => {
           {notificacoesPendentes > 0 && (
             <div style={{ marginTop: "var(--espacamento-md)", display: "flex", gap: "var(--espacamento-sm)", alignItems: "center", flexWrap: "wrap" }}>
               <span className="status-badge pendente">
-                {notificacoesPendentes} atualização(ões) de medição aguardando leitura
+                {notificacoesPendentes} {notificacoesPendentes === 1 ? "atualização" : "atualizações"} de medição aguardando leitura
               </span>
               <button className="button-secondary" onClick={handleReadNotifications}>
                 Marcar como lidas

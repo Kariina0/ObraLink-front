@@ -23,7 +23,7 @@ export const ROUTE_PERMISSIONS = {
   "/sincronizacao":        [PERFIS.ADMIN, PERFIS.SUPERVISOR, PERFIS.ENCARREGADO],
 
   // Supervisor e Admin
-  "/medicoes-lista":       [PERFIS.ADMIN, PERFIS.SUPERVISOR],
+  "/medicoes-lista":       [PERFIS.ADMIN, PERFIS.SUPERVISOR, PERFIS.ENCARREGADO],
   "/relatorios":           [PERFIS.ADMIN, PERFIS.SUPERVISOR],
   "/obras":                [PERFIS.ADMIN, PERFIS.SUPERVISOR],
 

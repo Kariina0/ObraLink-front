@@ -3,6 +3,7 @@
 // Inclui filtros por obra, período, status e tipo de serviço.
 // Exibe todos os campos relevantes: área, tipo de serviço, problemas, arquivos.
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import { listMedicoesPaginado } from "../services/medicoesService";
 import { TIPOS_SERVICO, getTipoServicoLabel, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao";
@@ -26,6 +27,7 @@ function getFotoUrl(m) {
 }
 
 function MeusRelatorios() {
+  const navigate = useNavigate();
   const [medicoes, setMedicoes]     = useState([]);
   const { obras }                   = useObras(200);
   const [erro, setErro]             = useState(null);
@@ -233,7 +235,7 @@ function MeusRelatorios() {
               color: "var(--cor-texto-secundario)",
               fontSize: "var(--tamanho-fonte-pequena)",
             }}>
-              {medicoes.length} de {totalItems} medição{totalItems !== 1 ? "ões" : ""}
+              {medicoes.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
               {temFiltroAtivo ? " (filtros ativos)" : ""}.
             </p>
 
@@ -365,6 +367,19 @@ function MeusRelatorios() {
                           <p style={{ marginTop: "var(--espacamento-xs)", marginBottom: 0 }}>
                             {m.observacoes}
                           </p>
+                        </div>
+                      )}
+
+                      {/* Botão de edição para rascunhos e medições rejeitadas */}
+                      {(m.status === "rascunho" || m.status === "rejeitada") && (
+                        <div style={{ marginTop: "var(--espacamento-md)", display: "flex", gap: "var(--espacamento-sm)" }}>
+                          <button
+                            className="button-secondary"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/medicoes?editar=${m.id}`); }}
+                            style={{ padding: "8px 18px" }}
+                          >
+                            {m.status === "rascunho" ? "Editar rascunho" : "Corrigir e reenviar"}
+                          </button>
                         </div>
                       )}
 

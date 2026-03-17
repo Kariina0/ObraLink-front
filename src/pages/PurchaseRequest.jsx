@@ -391,7 +391,7 @@ export default function PurchaseRequest() {
 
         {sucesso && (
           <p className="success-msg" style={{ marginBottom: "var(--espacamento-lg)" }}>
-            Solicitacao enviada com sucesso! Aguarde a aprovacao do supervisor.
+            Solicitação enviada com sucesso! Aguarde a aprovação do supervisor.
           </p>
         )}
 

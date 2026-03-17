@@ -87,8 +87,9 @@ export async function listMedicoesPaginado(params = {}) {
   const response = await api.get("/measurements/minhas", { params });
   const payload = response.data;
   return {
-    data:       payload?.data  ?? [],
-    pagination: payload?.meta  ?? null,
+    data:         payload?.data  ?? [],
+    pagination:   payload?.meta  ?? null,
+    statusSummary: payload?.meta?.statusSummary ?? null,
   };
 }
 
@@ -107,8 +108,9 @@ export async function listAllMedicoesPaginado(params = {}) {
   const response = await api.get("/measurements", { params });
   const payload = response.data;
   return {
-    data:       payload?.data  ?? [],
-    pagination: payload?.meta  ?? null,
+    data:         payload?.data  ?? [],
+    pagination:   payload?.meta  ?? null,
+    statusSummary: payload?.meta?.statusSummary ?? null,
   };
 }
 
@@ -121,5 +123,55 @@ export async function rejeitarMedicao(id, motivoRejeicao = "") {
   const response = await api.post(`/measurements/${id}/rejeitar`, {
     motivoRejeicao,
   });
+  return extractApiData(response.data);
+}
+
+export async function getMedicaoById(id) {
+  const response = await api.get(`/measurements/${id}`);
+  return extractApiData(response.data);
+}
+
+export async function updateMedicao(id, payload) {
+  const comprimento = Number(payload?.comprimento) || null;
+  const largura     = Number(payload?.largura)     || null;
+  const altura      = Number(payload?.altura)      || null;
+
+  const areaCalculada = (comprimento && largura) ? comprimento * largura : (Number(payload?.areaCalculada) || 0);
+  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (Number(payload?.volume) || 0);
+
+  const areaNome    = payload?.area        || null;
+  const tipoServico = payload?.tipoServico || null;
+
+  const body = {
+    area:         areaNome,
+    tipoServico,
+    observacoes:  payload?.observacoes || "",
+    status:       payload?.status || "enviada",
+    comprimento,
+    largura,
+    altura,
+    areaCalculada: areaCalculada > 0 ? areaCalculada : null,
+    volume:        volume > 0 ? volume : null,
+    itens: [
+      {
+        descricao:     areaNome ? `Medição geométrica — ${areaNome}` : "Medição geométrica",
+        quantidade:    areaCalculada > 0 ? areaCalculada : (comprimento || 0),
+        unidade:       "m²",
+        valorUnitario: null,
+        valorTotal:    volume > 0 ? volume : areaCalculada,
+        observacoes:   payload?.observacoes || "",
+        local:         areaNome || "",
+      },
+    ],
+  };
+
+  if (Array.isArray(payload?.anexos)) {
+    const anexoIds = payload.anexos
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0);
+    if (anexoIds.length > 0) body.anexos = anexoIds;
+  }
+
+  const response = await api.put(`/measurements/${id}`, body);
   return extractApiData(response.data);
 }

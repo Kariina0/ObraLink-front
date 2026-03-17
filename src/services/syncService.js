@@ -7,15 +7,17 @@ import {
 } from "../utils/syncQueue";
 
 function mapBatch(operations) {
-  const medicoes = [];
-  const solicitacoes = [];
+const medicoes = [];
+const solicitacoes = [];
+const diarios = [];
 
-  operations.forEach((op) => {
-    if (op.type === "medicao") medicoes.push(op.payload);
-    if (op.type === "solicitacao") solicitacoes.push(op.payload);
-  });
+operations.forEach((op) => {
+  if (op.type === "medicao") medicoes.push(op.payload);
+  if (op.type === "solicitacao") solicitacoes.push(op.payload);
+  if (op.type === "diario") diarios.push(op.payload);
+});
 
-  return { medicoes, solicitacoes, diarios: [] };
+return { medicoes, solicitacoes, diarios };
 }
 
 export async function syncPendingOperations() {
@@ -23,7 +25,7 @@ export async function syncPendingOperations() {
   if (!operations.length) return { synced: 0, conflicts: 0, errors: 0 };
 
   const batch = mapBatch(operations);
-  if (!batch.medicoes.length && !batch.solicitacoes.length) {
+  if (!batch.medicoes.length && !batch.solicitacoes.length && !batch.diarios.length) {
     return { synced: 0, conflicts: 0, errors: 0 };
   }
 

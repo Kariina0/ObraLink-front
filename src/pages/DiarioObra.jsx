@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Layout from "../components/Layout";
-import { createDiario, listMeusDiarios } from "../services/diariosService";
+import {
+  checkDuplicataDiario,
+  createDiario,
+  listMeusDiarios,
+} from "../services/diariosService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
 import "../styles/pages.css";
@@ -20,25 +24,147 @@ const CLIMA_LABEL = Object.fromEntries(
   CLIMAS.map(({ value, label }) => [value, label])
 );
 
+// Data máxima aceita no input (hoje, no fuso local)
+const HOJE = new Date().toISOString().slice(0, 10);
+
+function pluralAtividades(n) {
+  return n === 1 ? "1 atividade" : `${n} atividades`;
+}
+
+// ── Cartão de detalhes de um diário recente ───────────────────────────────────
+function CardDiario({ d, formatarData }) {
+  const [expandido, setExpandido] = useState(false);
+
+  const atividades  = Array.isArray(d.atividades)  ? d.atividades  : [];
+  const ocorrencias = Array.isArray(d.ocorrencias) ? d.ocorrencias : [];
+
+  const primeiraAtividade = atividades[0]?.descricao ?? null;
+  const restantes         = atividades.length > 1 ? atividades.length - 1 : 0;
+
+  return (
+    <div className="card" style={{ marginTop: "var(--espacamento-sm)" }}>
+      {/* Cabeçalho do cartão */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+        <div>
+          <strong style={{ fontSize: "1.05rem" }}>{formatarData(d.data)}</strong>
+          {d.obraNome && (
+            <p style={{ margin: "2px 0 0", color: "var(--cor-texto-secundario, #666)", fontSize: "0.9rem" }}>
+              {d.obraNome}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpandido((v) => !v)}
+          style={{
+            background: "none",
+            border: "1px solid var(--cor-borda, #ddd)",
+            borderRadius: "6px",
+            padding: "4px 10px",
+            cursor: "pointer",
+            fontSize: "0.85rem",
+            color: "var(--cor-texto-secundario, #555)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {expandido ? "Ocultar detalhes" : "Ver detalhes"}
+        </button>
+      </div>
+
+      {/* Resumo sempre visível */}
+      <p style={{ marginTop: "8px", fontSize: "0.92rem" }}>
+        <strong>Clima:</strong>{" "}
+        {CLIMA_LABEL[d.clima] ?? <em style={{ color: "#999" }}>Não informado</em>}
+      </p>
+      <p style={{ marginTop: "4px", fontSize: "0.92rem" }}>
+        <strong>Atividades:</strong>{" "}
+        {atividades.length === 0 ? (
+          <em style={{ color: "#999" }}>Nenhuma registrada</em>
+        ) : (
+          <>
+            {primeiraAtividade}
+            {restantes > 0 && (
+              <span style={{ color: "var(--cor-texto-secundario, #666)" }}>
+                {" "}(+{restantes} {restantes === 1 ? "outra" : "outras"})
+              </span>
+            )}
+          </>
+        )}
+      </p>
+
+      {/* Detalhes expandíveis */}
+      {expandido && (
+        <div style={{ marginTop: "12px", borderTop: "1px solid var(--cor-borda, #eee)", paddingTop: "12px" }}>
+          {atividades.length > 1 && (
+            <div style={{ marginBottom: "10px" }}>
+              <strong style={{ fontSize: "0.9rem" }}>Todas as atividades:</strong>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: "0.9rem" }}>
+                {atividades.map((a, i) => (
+                  <li key={i}>{a.descricao}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {ocorrencias.length > 0 && (
+            <div style={{ marginBottom: "10px" }}>
+              <strong style={{ fontSize: "0.9rem" }}>Ocorrências:</strong>
+              <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: "0.9rem" }}>
+                {ocorrencias.map((o, i) => (
+                  <li key={i}>{o.descricao}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {d.observacoesGerais && (
+            <div>
+              <strong style={{ fontSize: "0.9rem" }}>Observações gerais:</strong>
+              <p style={{ margin: "4px 0 0", fontSize: "0.9rem" }}>{d.observacoesGerais}</p>
+            </div>
+          )}
+
+          {ocorrencias.length === 0 && !d.observacoesGerais && atividades.length <= 1 && (
+            <p style={{ color: "#999", fontSize: "0.9rem", margin: 0 }}>
+              Nenhum detalhe adicional registrado.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Componente principal ──────────────────────────────────────────────────────
 export default function DiarioObra() {
   const [form, setForm] = useState({
     obra: "",
-    data: new Date().toISOString().slice(0, 10),
+    data: HOJE,
     clima: "",
     atividades: "",
     ocorrencias: "",
     observacoesGerais: "",
+    // Campos adicionais (seção expansível)
+    equipamentos: "",
+    maoDeObra: "",
+    materiais: "",
+    visitantes: "",
   });
 
   const { obras, loadingObras } = useObras(100);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [success, setSuccess]   = useState("");
+  const [aviso, setAviso]       = useState(""); // aviso de duplicata (não bloqueia)
+  const [mostrarCamposExtra, setMostrarCamposExtra] = useState(false);
 
   // Estado separado para a seção de recentes — não contamina mensagens do formulário
-  const [recentes, setRecentes] = useState([]);
+  const [recentes, setRecentes]               = useState([]);
   const [loadingRecentes, setLoadingRecentes] = useState(true);
-  const [errorRecentes, setErrorRecentes] = useState("");
+  const [errorRecentes, setErrorRecentes]     = useState("");
+
+  // Controla debounce do check de duplicata
+  const checkTimeoutRef = useRef(null);
 
   // Pré-seleciona automaticamente quando houver apenas uma obra vinculada
   useEffect(() => {
@@ -51,6 +177,26 @@ export default function DiarioObra() {
   useEffect(() => {
     carregarRecentes();
   }, []);
+
+  // Verifica duplicata sempre que obra ou data mudam
+  useEffect(() => {
+    clearTimeout(checkTimeoutRef.current);
+    setAviso("");
+    if (!form.obra || !form.data) return;
+
+    checkTimeoutRef.current = setTimeout(async () => {
+      try {
+        const result = await checkDuplicataDiario(Number(form.obra), form.data);
+        if (result?.exists) {
+          setAviso("Atenção: já existe um diário registrado para esta obra nesta data.");
+        }
+      } catch {
+        // Falha silenciosa — o servidor validará na submissão
+      }
+    }, 600);
+
+    return () => clearTimeout(checkTimeoutRef.current);
+  }, [form.obra, form.data]);
 
   async function carregarRecentes() {
     setLoadingRecentes(true);
@@ -83,7 +229,7 @@ export default function DiarioObra() {
     setSuccess("");
 
     if (!form.obra) {
-      setError("Selecione a obra do diário.");
+      setError("Selecione a obra antes de registrar o diário.");
       return;
     }
 
@@ -92,31 +238,46 @@ export default function DiarioObra() {
       return;
     }
 
+    // Bloqueia data futura mesmo que o browser aceite digitação manual
+    if (form.data > HOJE) {
+      setError("Não é permitido registrar diário com data futura.");
+      return;
+    }
+
     const payload = {
       obra: Number(form.obra),
       data: new Date(`${form.data}T12:00:00`).toISOString(),
       clima: form.clima || null,
-      atividades: mapLinesToArray(form.atividades),
-      ocorrencias: mapLinesToArray(form.ocorrencias),
-      observacoesGerais: form.observacoesGerais || null,
+      atividades:        mapLinesToArray(form.atividades),
+      ocorrencias:       mapLinesToArray(form.ocorrencias),
+      equipamentos:      mapLinesToArray(form.equipamentos),
+      maoDeObra:         mapLinesToArray(form.maoDeObra),
+      materiais:         mapLinesToArray(form.materiais),
+      visitantes:        mapLinesToArray(form.visitantes),
+      observacoesGerais: form.observacoesGerais.trim() || null,
     };
 
     try {
       setLoading(true);
       await createDiario(payload);
-      setSuccess("Diário registrado com sucesso.");
+      setSuccess("Diário registrado com sucesso!");
+      setAviso("");
       setForm((prev) => ({
         ...prev,
-        atividades: "",
-        ocorrencias: "",
+        atividades:        "",
+        ocorrencias:       "",
         observacoesGerais: "",
+        equipamentos:      "",
+        maoDeObra:         "",
+        materiais:         "",
+        visitantes:        "",
       }));
       // Atualiza lista de recentes silenciosamente (sem spinner)
       listMeusDiarios({ page: 1, limit: 5 })
         .then((data) => setRecentes(Array.isArray(data?.data) ? data.data : []))
         .catch(() => {});
     } catch (err) {
-      setError(extractApiMessage(err, "Erro ao registrar diário."));
+      setError(extractApiMessage(err, "Erro ao registrar o diário. Tente novamente."));
     } finally {
       setLoading(false);
     }
@@ -151,7 +312,8 @@ export default function DiarioObra() {
               </select>
             ) : semObras ? (
               <p className="erro-msg" style={{ margin: "4px 0 0" }}>
-                Nenhuma obra vinculada à sua conta. Contate o administrador.
+                Nenhuma obra vinculada à sua conta. Entre em contato com o
+                administrador.
               </p>
             ) : (
               <select
@@ -180,21 +342,39 @@ export default function DiarioObra() {
               name="data"
               type="date"
               value={form.data}
+              max={HOJE}
               onChange={handleChange}
               required
             />
           </div>
 
+          {/* Aviso de duplicata */}
+          {aviso && (
+            <p
+              style={{
+                margin: "0 0 var(--espacamento-sm)",
+                padding: "10px 14px",
+                background: "#fff8e1",
+                border: "1px solid #f9a825",
+                borderRadius: "6px",
+                color: "#7a5500",
+                fontSize: "0.92rem",
+              }}
+            >
+              ⚠️ {aviso}
+            </p>
+          )}
+
           {/* Clima */}
           <div className="form-group">
-            <label htmlFor="clima">Clima</label>
+            <label htmlFor="clima">Clima do dia</label>
             <select
               id="clima"
               name="clima"
               value={form.clima}
               onChange={handleChange}
             >
-              <option value="">Selecione</option>
+              <option value="">Selecione o clima do dia</option>
               {CLIMAS.map(({ value, label }) => (
                 <option key={value} value={value}>
                   {label}
@@ -205,12 +385,19 @@ export default function DiarioObra() {
 
           {/* Atividades */}
           <div className="form-group">
-            <label htmlFor="atividades">Atividades do dia *</label>
+            <label htmlFor="atividades">
+              Atividades realizadas *
+              <span
+                style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}
+              >
+                (uma por linha)
+              </span>
+            </label>
             <textarea
               id="atividades"
               name="atividades"
               rows={4}
-              placeholder="Uma atividade por linha. Ex: Concretagem da laje"
+              placeholder={"Concretagem da laje\nMontagem das formas\nInstalação hidráulica — andar 2"}
               value={form.atividades}
               onChange={handleChange}
               required
@@ -219,12 +406,19 @@ export default function DiarioObra() {
 
           {/* Ocorrências */}
           <div className="form-group">
-            <label htmlFor="ocorrencias">Ocorrências</label>
+            <label htmlFor="ocorrencias">
+              Ocorrências
+              <span
+                style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}
+              >
+                (uma por linha)
+              </span>
+            </label>
             <textarea
               id="ocorrencias"
               name="ocorrencias"
               rows={3}
-              placeholder="Uma ocorrência por linha. Ex: Chuva às 15h"
+              placeholder={"Chuva às 15h — paralisação de 1h\nAcidente sem feridos — relatório aberto"}
               value={form.ocorrencias}
               onChange={handleChange}
             />
@@ -237,10 +431,104 @@ export default function DiarioObra() {
               id="observacoesGerais"
               name="observacoesGerais"
               rows={3}
+              placeholder="Ex: Equipe completa. Visita do engenheiro às 10h. Entrega de material prevista para amanhã."
               value={form.observacoesGerais}
               onChange={handleChange}
             />
           </div>
+
+          {/* Campos adicionais — expansível */}
+          <div style={{ margin: "var(--espacamento-sm) 0" }}>
+            <button
+              type="button"
+              onClick={() => setMostrarCamposExtra((v) => !v)}
+              style={{
+                background: "none",
+                border: "1px dashed var(--cor-borda, #ccc)",
+                borderRadius: "6px",
+                padding: "8px 14px",
+                width: "100%",
+                textAlign: "left",
+                cursor: "pointer",
+                color: "var(--cor-texto-secundario, #555)",
+                fontSize: "0.92rem",
+              }}
+            >
+              {mostrarCamposExtra ? "▲ Ocultar campos adicionais" : "▼ Adicionar equipamentos, mão de obra, materiais ou visitantes"}
+            </button>
+          </div>
+
+          {mostrarCamposExtra && (
+            <>
+              <div className="form-group">
+                <label htmlFor="equipamentos">
+                  Equipamentos utilizados
+                  <span style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}>
+                    (um por linha)
+                  </span>
+                </label>
+                <textarea
+                  id="equipamentos"
+                  name="equipamentos"
+                  rows={2}
+                  placeholder={"Betoneira\nGuindaste — 6h de uso"}
+                  value={form.equipamentos}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="maoDeObra">
+                  Mão de obra
+                  <span style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}>
+                    (uma categoria por linha)
+                  </span>
+                </label>
+                <textarea
+                  id="maoDeObra"
+                  name="maoDeObra"
+                  rows={2}
+                  placeholder={"Pedreiros — 4 presentes\nEletricitários — 2 presentes"}
+                  value={form.maoDeObra}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="materiais">
+                  Materiais utilizados
+                  <span style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}>
+                    (um por linha)
+                  </span>
+                </label>
+                <textarea
+                  id="materiais"
+                  name="materiais"
+                  rows={2}
+                  placeholder={"Cimento — 20 sacos\nFerro 10mm — 50 barras"}
+                  value={form.materiais}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="visitantes">
+                  Visitantes
+                  <span style={{ fontWeight: 400, fontSize: "0.85rem", marginLeft: "6px", color: "var(--cor-texto-secundario, #666)" }}>
+                    (um por linha)
+                  </span>
+                </label>
+                <textarea
+                  id="visitantes"
+                  name="visitantes"
+                  rows={2}
+                  placeholder={"Eng. Carlos Silva — vistoria\nFiscal da prefeitura"}
+                  value={form.visitantes}
+                  onChange={handleChange}
+                />
+              </div>
+            </>
+          )}
 
           {error && <p className="erro-msg">{error}</p>}
           {success && <p className="success-msg">{success}</p>}
@@ -250,18 +538,18 @@ export default function DiarioObra() {
             type="submit"
             disabled={loading || loadingObras || semObras}
           >
-            {loading ? "Salvando..." : "Salvar Diário"}
+            {loading ? "Registrando..." : "Registrar diário"}
           </button>
         </form>
 
         {/* Seção de diários recentes */}
-        <h3 style={{ marginTop: "var(--espacamento-xl)" }}>
-          Últimos diários enviados
+        <h3 style={{ marginTop: "var(--espacamento-xl)", marginBottom: "var(--espacamento-sm)" }}>
+          Últimos diários registrados
         </h3>
 
         {loadingRecentes ? (
           <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
-            Carregando...
+            Carregando diários recentes...
           </div>
         ) : errorRecentes ? (
           <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
@@ -270,31 +558,24 @@ export default function DiarioObra() {
             </p>
           </div>
         ) : recentes.length === 0 ? (
-          <div className="card" style={{ marginTop: "var(--espacamento-md)" }}>
-            Nenhum diário registrado ainda.
+          <div
+            className="card"
+            style={{
+              marginTop: "var(--espacamento-md)",
+              color: "var(--cor-texto-secundario, #666)",
+              textAlign: "center",
+              padding: "var(--espacamento-xl)",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: "1.1rem" }}>📋</p>
+            <p style={{ margin: "8px 0 0" }}>Nenhum diário registrado ainda.</p>
+            <p style={{ margin: "4px 0 0", fontSize: "0.875rem" }}>
+              Preencha o formulário acima para criar o primeiro registro.
+            </p>
           </div>
         ) : (
           recentes.map((d) => (
-            <div
-              key={d.id}
-              className="card"
-              style={{ marginTop: "var(--espacamento-sm)" }}
-            >
-              <strong>{formatarData(d.data)}</strong>
-              {d.obraNome && (
-                <p style={{ marginTop: "4px", color: "var(--cor-texto-secundario, #666)" }}>
-                  {d.obraNome}
-                </p>
-              )}
-              <p style={{ marginTop: "6px" }}>
-                <strong>Clima:</strong>{" "}
-                {CLIMA_LABEL[d.clima] ?? "Não informado"}
-              </p>
-              <p style={{ marginTop: "6px" }}>
-                <strong>Atividades:</strong>{" "}
-                {Array.isArray(d.atividades) ? d.atividades.length : 0} registro(s)
-              </p>
-            </div>
+            <CardDiario key={d.id} d={d} formatarData={formatarData} />
           ))
         )}
       </div>

@@ -1,9 +1,10 @@
 // src/pages/GerenciarObras.jsx
 // Gerenciar Obras — listagem, cadastro (admin) e edição (admin) de obras.
 // Administradores também podem vincular/desvincular encarregados responsáveis.
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useEffect, useCallback, useRef } from "react";
 import Layout from "../components/Layout";
 import {
+  listObras,
   createObra,
   deleteObra,
   updateObra,
@@ -11,7 +12,6 @@ import {
   desvincularEncarregado,
   getEncarregadosDisponiveis,
 } from "../services/obrasService";
-import useObras from "../hooks/useObras";
 import { extractApiMessage } from "../services/response";
 import { AuthContext } from "../context/AuthContext";
 import { isAdmin } from "../constants/permissions";
@@ -36,6 +36,7 @@ const FORM_VAZIO = {
   endereco:            "",
   dataInicio:          "",
   dataPrevisaoTermino: "",
+  dataTermino:         "",
   status:              "planejamento",
   descricao:           "",
   observacoes:         "",
@@ -43,15 +44,18 @@ const FORM_VAZIO = {
 
 function GerenciarObras() {
   const { user } = useContext(AuthContext);
-  const admin = isAdmin(user?.perfil);
+  const admin      = isAdmin(user?.perfil);
+  const supervisor = user?.perfil === "supervisor";
 
-  // ── listagem ────────────────────────────────────────────────────────────────
-  const { obras, loadingObras: loading, reload: loadObras } = useObras(200);
-  const [erro, setErro]         = useState(null);
+  // ── listagem server-side ──────────────────────────────────────────────────────────────────
+  const [obras, setObras]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [erro, setErro]                 = useState(null);
 
-  // ── filtros ─────────────────────────────────────────────────────────────────
-  const [busca, setBusca]             = useState("");
+  // ── filtros ──────────────────────────────────────────────────────────────────────
+  const [busca, setBusca]               = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
+  const buscaTimerRef                   = useRef(null);
 
   // ── seleção de obra para exibir detalhes / editar ───────────────────────────
   const [obraSelecionada, setObraSelecionada] = useState(null);
@@ -77,6 +81,40 @@ function GerenciarObras() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   // ── carregamento de usuários disponíveis (apenas quando abre painel de encarregados) ────
+  // ── Fetch de obras com filtros server-side ──────────────────────────────────────
+  const carregarObras = useCallback(async (q = "", status = "") => {
+    setLoading(true);
+    setErro(null);
+    try {
+      const params = { page: 1, limit: 100 };
+      if (q.trim())  params.q      = q.trim();
+      if (status)    params.status = status;
+      const data = await listObras(params);
+      setObras(Array.isArray(data) ? data : []);
+    } catch {
+      setErro("Não foi possível carregar as obras. Verifique a conexão e tente novamente.");
+      setObras([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // função que usa filtros atuais (para recarregar after criar/editar)
+  const loadObras = useCallback(
+    () => carregarObras(busca, filtroStatus),
+    [busca, filtroStatus, carregarObras],
+  );
+
+  // Carga inicial + recarrega ao mudar filtros (debounce 500ms na busca textual)
+  useEffect(() => {
+    clearTimeout(buscaTimerRef.current);
+    buscaTimerRef.current = setTimeout(
+      () => carregarObras(busca, filtroStatus),
+      busca ? 500 : 0,
+    );
+    return () => clearTimeout(buscaTimerRef.current);
+  }, [busca, filtroStatus, carregarObras]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadUsuarios = async (obraId) => {
     try {
       setUserLoading(true);
@@ -89,13 +127,7 @@ function GerenciarObras() {
     }
   };
 
-  // ── filtro local na lista de obras ──────────────────────────────────────────
-  const obrasFiltradas = obras.filter((o) => {
-    const nome = (o.nome || o.descricao || "").toLowerCase();
-    const matchNome   = nome.includes(busca.toLowerCase());
-    const matchStatus = filtroStatus ? o.status === filtroStatus : true;
-    return matchNome && matchStatus;
-  });
+  // Filtros aplicados via API — `obras` já reflete busca e status atuais.
 
   // ── Abre formulário de criação ───────────────────────────────────────────────
   const abrirCriar = () => {
@@ -118,6 +150,9 @@ function GerenciarObras() {
         : "",
       dataPrevisaoTermino: obra.dataPrevisaoTermino
         ? obra.dataPrevisaoTermino.substring(0, 10)
+        : "",
+      dataTermino:         obra.dataTermino
+        ? obra.dataTermino.substring(0, 10)
         : "",
       status:              obra.status              || "planejamento",
       descricao:           obra.descricao           || "",
@@ -167,13 +202,15 @@ function GerenciarObras() {
       setFormLoading(true);
       if (modo === "create") {
         await createObra(form);
-        setFormSucesso("Obra cadastrada com sucesso!");
+        setFormSucesso("Obra cadastrada com sucesso! Retornando para a lista...");
         setForm(FORM_VAZIO);
+        await loadObras();
+        setTimeout(voltar, 1800);
       } else {
         await updateObra(obraSelecionada.id, form);
         setFormSucesso("Obra atualizada com sucesso!");
+        await loadObras();
       }
-      await loadObras();
     } catch (err) {
       setFormErro(extractApiMessage(err, "Não foi possível salvar a obra."));
     } finally {
@@ -257,12 +294,12 @@ function GerenciarObras() {
             ← Voltar para lista
           </button>
           <h1 className="page-title">
-            {modo === "create" ? "Cadastrar Nova Obra" : `Editar: ${obraSelecionada?.nome || `Obra #${obraSelecionada?.id}`}`}
+            {modo === "create" ? "Cadastrar nova obra" : `Editar: ${obraSelecionada?.nome || `Obra #${obraSelecionada?.id}`}`}
           </h1>
           <p className="page-description">
             {modo === "create"
-              ? "Preencha as informações da nova obra. Apenas administradores podem cadastrar obras."
-              : "Altere as informações da obra conforme necessário."}
+              ? "Preencha os dados da nova obra. Campos marcados com * são obrigatórios."
+              : "Edite os dados da obra conforme necessário. Campos marcados com * são obrigatórios."}
           </p>
 
           {formErro   && <p className="erro-msg">{formErro}</p>}
@@ -336,15 +373,23 @@ function GerenciarObras() {
             {/* ── Datas ────────────────────────────────────────────────── */}
             <div className="form-grid-2">
               <div className="form-group">
-                <label htmlFor="o-ini">Data de Início</label>
+                <label htmlFor="o-ini">Data de início</label>
                 <input id="o-ini" name="dataInicio" type="date" value={form.dataInicio} onChange={handleChange} />
               </div>
 
               <div className="form-group">
-                <label htmlFor="o-fim">Previsão de Término</label>
+                <label htmlFor="o-fim">Previsão de término</label>
                 <input id="o-fim" name="dataPrevisaoTermino" type="date" value={form.dataPrevisaoTermino} onChange={handleChange} />
               </div>
             </div>
+
+            {/* Data de conclusão — exibida na edição ou quando status = concluída */}
+            {(modo === "edit" || form.status === "concluida") && (
+              <div className="form-group">
+                <label htmlFor="o-termino">Data de conclusão</label>
+                <input id="o-termino" name="dataTermino" type="date" value={form.dataTermino} onChange={handleChange} />
+              </div>
+            )}
 
             {/* ── Status ───────────────────────────────────────────────── */}
             <div className="form-group">
@@ -390,8 +435,8 @@ function GerenciarObras() {
               {formLoading
                 ? "Salvando..."
                 : modo === "create"
-                  ? "Cadastrar Obra"
-                  : "Salvar Alterações"}
+                  ? "Cadastrar obra"
+                  : "Salvar alterações"}
             </button>
           </form>
         </div>
@@ -421,8 +466,8 @@ function GerenciarObras() {
             Encarregados — {obraSelecionada.nome || `Obra #${obraSelecionada.id}`}
           </h1>
           <p className="page-description">
-            Gerencie os encarregados responsáveis por esta obra. Apenas usuários
-            ainda não vinculados aparecem na lista para adição.
+            Adicione ou remova os colaboradores vinculados a esta obra. A função
+            exibida corresponde ao perfil do usuário no sistema.
           </p>
 
           {encErro && <p className="erro-msg">{encErro}</p>}
@@ -443,7 +488,7 @@ function GerenciarObras() {
                     <tr>
                       <th>Nome</th>
                       <th>E-mail</th>
-                      <th>Função</th>
+                      <th>Perfil no sistema</th>
                       <th>Ação</th>
                     </tr>
                   </thead>
@@ -505,13 +550,14 @@ function GerenciarObras() {
                   </div>
 
                   <div className="form-group">
-                    <label htmlFor="enc-funcao">Função</label>
+                    <label htmlFor="enc-funcao">Perfil no sistema</label>
                     <input
                       id="enc-funcao"
                       type="text"
                       value={funcaoNova}
                       readOnly
-                      placeholder="Selecione um usuário"
+                      placeholder="Preenchido automaticamente"
+                      title="A função é definida pelo perfil do usuário no sistema"
                       style={{ background: "var(--cor-fundo-input-desabilitado, #f3f4f6)", cursor: "default" }}
                     />
                   </div>
@@ -540,7 +586,7 @@ function GerenciarObras() {
           <div>
             <h1 className="page-title" style={{ marginBottom: "var(--espacamento-xs)" }}>Obras</h1>
             <p className="page-description" style={{ marginBottom: 0 }}>
-              Lista de obras cadastradas no sistema.
+              Gerencie as obras e equipes de campo.
             </p>
           </div>
 
@@ -551,7 +597,7 @@ function GerenciarObras() {
               onClick={abrirCriar}
               style={{ width: "auto", padding: "14px 28px" }}
             >
-              + Nova Obra
+              + Cadastrar obra
             </button>
           )}
         </div>
@@ -588,6 +634,22 @@ function GerenciarObras() {
           </div>
         </div>
 
+        {/* ── Banner de modo visualização para supervisor ────────────── */}
+        {supervisor && !admin && (
+          <div style={{
+            background: "#eff6ff",
+            border: "1px solid #bfdbfe",
+            borderRadius: "var(--borda-radius)",
+            padding: "var(--espacamento-md)",
+            marginBottom: "var(--espacamento-lg)",
+            color: "#1e40af",
+            fontSize: "0.9rem",
+          }}>
+            <strong>Modo visualização</strong> — Você está visualizando as obras como supervisor.
+            Para criar ou editar obras, entre em contato com um administrador.
+          </div>
+        )}
+
         {/* ── Feedback ─────────────────────────────────────────────────── */}
         {erro && <p className="erro-msg">{erro}</p>}
         {loading && (
@@ -596,20 +658,25 @@ function GerenciarObras() {
           </p>
         )}
 
-        {!loading && !erro && obrasFiltradas.length === 0 && (
+        {!loading && !erro && obras.length === 0 && (
           <div className="card" style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
             <p>
-              {obras.length === 0
-                ? "Nenhuma obra cadastrada."
-                : "Nenhuma obra encontrada para os filtros informados."}
+              {busca || filtroStatus
+                ? "Nenhuma obra encontrada. Tente ajustar os filtros."
+                : "Nenhuma obra cadastrada ainda."}
             </p>
+            {!busca && !filtroStatus && admin && (
+              <p style={{ margin: "8px 0 0", fontSize: "0.875rem", color: "var(--cor-texto-secundario)" }}>
+                Clique em “Cadastrar obra” para adicionar a primeira obra.
+              </p>
+            )}
           </div>
         )}
 
         {/* ── Cards de obras ───────────────────────────────────────────── */}
         {!loading && (
           <div className="obras-list">
-            {obrasFiltradas.map((obra) => (
+            {obras.map((obra) => (
               <div key={obra.id} className="obra-card">
                 {/* Cabeçalho do card */}
                 <div style={{
@@ -699,7 +766,7 @@ function GerenciarObras() {
                           marginBottom: "var(--espacamento-xs)",
                         }}>
                           <p style={{ margin: 0, fontWeight: 700, color: "var(--cor-perigo)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-                            Tem certeza que deseja remover a obra <em>"{obra.nome || `#${obra.id}`}"</em>? Esta ação não pode ser desfeita.
+                            Deseja remover a obra <em>"{obra.nome || `#${obra.id}`}"</em>? Esta ação é permanente e não pode ser desfeita.
                           </p>
                         </div>
                         <button
@@ -750,14 +817,14 @@ function GerenciarObras() {
           </div>
         )}
 
-        {!loading && obrasFiltradas.length > 0 && (
+        {!loading && obras.length > 0 && (
           <p style={{
             marginTop: "var(--espacamento-lg)",
             color: "var(--cor-texto-secundario)",
             fontSize: "var(--tamanho-fonte-pequena)",
           }}>
-            Exibindo {obrasFiltradas.length} de {obras.length}{" "}
-            {obras.length === 1 ? "obra" : "obras"}.
+            {obras.length} {obras.length === 1 ? "obra encontrada" : "obras encontradas"}
+            {(busca || filtroStatus) ? " para os filtros aplicados" : ""}.
           </p>
         )}
       </div>

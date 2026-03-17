@@ -42,16 +42,15 @@ export const getTipoServicoLabel = (value) =>
 
 // Status de medição — mapa de classe CSS e label
 export const STATUS_CLASS = {
-  aprovada: "aprovada",
+  aprovada:  "aprovada",
   rejeitada: "rejeitada",
-  pendente: "pendente",
-  enviada: "pendente",
-  rascunho: "pendente",
+  enviada:   "pendente",
+  rascunho:  "rascunho",
 };
 
 export const STATUS_LABEL = {
   aprovada:  "Aprovada",
   rejeitada: "Rejeitada",
-  enviada:   "Enviada",
+  enviada:   "Aguardando revisão",
   rascunho:  "Rascunho",
 };
