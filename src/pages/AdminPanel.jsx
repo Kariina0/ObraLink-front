@@ -23,18 +23,26 @@ function AdminPanel() {
   const { obras } = useObras(200);
   const [exportMes, setExportMes] = useState(new Date().toISOString().slice(0, 7));
   const [exportObraId, setExportObraId] = useState("");
-  const [exportPeriodo, setExportPeriodo] = useState(30);
+  const [exportPeriodo, setExportPeriodo] = useState("30");
   const [exportErro, setExportErro] = useState(null);
+  const [exportSucesso, setExportSucesso] = useState(null);
+  const [exportLoadingKey, setExportLoadingKey] = useState(null);
 
-  const handleExport = async (fn, label) => {
+  const handleExport = async (fn, label, loadingKey) => {
     try {
+      setExportLoadingKey(loadingKey);
       setExportErro(null);
+      setExportSucesso(null);
       await fn();
+      setExportSucesso(`Exportação de ${label} iniciada com sucesso.`);
     } catch (err) {
       const msg = err?.response?.data?.error?.message
         || err?.message
         || `Não foi possível exportar ${label}.`;
       setExportErro(msg);
+      setExportSucesso(null);
+    } finally {
+      setExportLoadingKey(null);
     }
   };
 
@@ -92,9 +100,11 @@ function AdminPanel() {
 
   return (
     <Layout>
-      <div className="page-container" style={{ maxWidth: "1000px" }}>
-        <h1 className="page-title">Painel de Administração</h1>
-        <p className="page-description">
+      <div className="page-container admin-page">
+        <div className="admin-header-row">
+          <h1 className="page-title admin-page-title">Painel de Administração</h1>
+        </div>
+        <p className="page-description admin-page-description">
           Visão geral do sistema. Acompanhe os principais indicadores e gerencie os recursos.
         </p>
 
@@ -136,39 +146,33 @@ function AdminPanel() {
             </div>
 
             {/* Exportar dados */}
-            <hr className="section-divider" />
-            <h2 className="section-title">Exportar Dados</h2>
+            <section className="admin-section admin-section--spaced" aria-label="Exportar dados">
+              <h2 className="section-title admin-section-title">Exportar Dados</h2>
 
-            <div
-              className="form-container"
-              style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
-            >
-              <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
+            <div className="form-container admin-export-card">
+              <p className="admin-export-section-title">
                 Filtros de exportação
               </p>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: "var(--espacamento-md)",
-                alignItems: "end",
-              }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label htmlFor="adm-periodo">Período (dias)</label>
+              <div className="admin-export-grid">
+                <div className="form-group admin-export-field">
+                  <label className="ss-filter-label" htmlFor="adm-periodo">Período (dias)</label>
                   <select
+                    className="ss-filter-select"
                     id="adm-periodo"
                     value={exportPeriodo}
-                    onChange={(e) => setExportPeriodo(Number(e.target.value))}
+                    onChange={(e) => setExportPeriodo(e.target.value)}
                   >
-                    <option value={7}>7</option>
-                    <option value={15}>15</option>
-                    <option value={30}>30</option>
-                    <option value={60}>60</option>
+                    <option value="7">7</option>
+                    <option value="15">15</option>
+                    <option value="30">30</option>
+                    <option value="60">60</option>
                   </select>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label htmlFor="adm-obra">Obra</label>
+                <div className="form-group admin-export-field">
+                  <label className="ss-filter-label" htmlFor="adm-obra">Obra</label>
                   <select
+                    className="ss-filter-select"
                     id="adm-obra"
                     value={exportObraId}
                     onChange={(e) => setExportObraId(e.target.value)}
@@ -180,9 +184,10 @@ function AdminPanel() {
                   </select>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label htmlFor="adm-mes">Mês de referência</label>
+                <div className="form-group admin-export-field">
+                  <label className="ss-filter-label" htmlFor="adm-mes">Mês de referência</label>
                   <input
+                    className="ss-filter-input"
                     id="adm-mes"
                     type="month"
                     value={exportMes}
@@ -191,65 +196,80 @@ function AdminPanel() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap", marginTop: "var(--espacamento-md)" }}>
+              <div className="admin-export-buttons">
                 <button
-                  className="button-secondary"
-                  onClick={() => handleExport(() => downloadManagementCsv(exportPeriodo), "visão gerencial")}
+                  className="button-secondary admin-export-button"
+                  disabled={exportLoadingKey !== null}
+                  onClick={() => handleExport(() => downloadManagementCsv({
+                    periodo: Number(exportPeriodo),
+                    obraId: exportObraId || undefined,
+                    mes: exportMes || undefined,
+                  }), "visão gerencial", "gerencial")}
                 >
-                  Gerencial (CSV)
+                  {exportLoadingKey === "gerencial" ? "Exportando..." : "Gerencial (CSV)"}
                 </button>
                 <button
-                  className="button-secondary"
-                  onClick={() => handleExport(() => downloadMedicoesCsv({ obraId: exportObraId || undefined, mes: exportMes || undefined }), "boletim CSV")}
+                  className="button-secondary admin-export-button"
+                  disabled={exportLoadingKey !== null}
+                  onClick={() => handleExport(() => downloadMedicoesCsv({ obraId: exportObraId || undefined, mes: exportMes || undefined }), "boletim CSV", "boletimCsv")}
                 >
-                  Boletim (CSV)
+                  {exportLoadingKey === "boletimCsv" ? "Exportando..." : "Boletim (CSV)"}
                 </button>
                 <button
-                  className="button-secondary"
-                  onClick={() => handleExport(() => downloadBoletimPdf({ obraId: exportObraId || undefined, mes: exportMes || undefined }), "boletim PDF")}
+                  className="button-secondary admin-export-button"
+                  disabled={exportLoadingKey !== null}
+                  onClick={() => handleExport(() => downloadBoletimPdf({ obraId: exportObraId || undefined, mes: exportMes || undefined }), "boletim PDF", "boletimPdf")}
                 >
-                  Boletim (PDF)
+                  {exportLoadingKey === "boletimPdf" ? "Exportando..." : "Boletim (PDF)"}
                 </button>
               </div>
 
               {exportErro && (
-                <p style={{ color: "var(--cor-perigo)", fontSize: "var(--tamanho-fonte-pequena)", margin: "var(--espacamento-sm) 0 0 0" }}>
+                <p className="admin-export-error" role="alert">
                   {exportErro}
                 </p>
               )}
+
+              {exportSucesso && (
+                <p className="admin-export-success" role="status" aria-live="polite">
+                  {exportSucesso}
+                </p>
+              )}
             </div>
+            </section>
 
             {/* Ações rápidas */}
-            <hr className="section-divider" />
-            <h2 className="section-title">Ações Rápidas</h2>
+            <section className="admin-section" aria-label="Ações rápidas">
+            <h2 className="section-title admin-section-title">Ações Rápidas</h2>
 
-            <div className="buttons-container">
-              <button className="topic-button" onClick={() => navigate("/obras")}>
-                <span className="topic-button-icon"><Icon name="building" size={22} /></span>
+            <div className="buttons-container admin-quick-actions-grid">
+              <button className="topic-button admin-topic-button" onClick={() => navigate("/obras")}>
+                <span className="topic-button-icon admin-topic-button-icon"><Icon name="building" size={20} /></span>
                 <span className="topic-button-title">Gerenciar Obras</span>
                 <span className="topic-button-desc">Ver todas as obras cadastradas</span>
               </button>
-              <button className="topic-button" onClick={() => navigate("/medicoes-lista")}>
-                <span className="topic-button-icon"><Icon name="checklist" size={22} /></span>
+              <button className="topic-button admin-topic-button" onClick={() => navigate("/medicoes-lista")}>
+                <span className="topic-button-icon admin-topic-button-icon"><Icon name="checklist" size={20} /></span>
                 <span className="topic-button-title">Aprovar Medições</span>
                 <span className="topic-button-desc">Revisar e aprovar medições pendentes</span>
               </button>
-              <button className="topic-button" onClick={() => navigate("/status-solicitacoes")}>
-                <span className="topic-button-icon"><Icon name="cart" size={22} /></span>
+              <button className="topic-button admin-topic-button" onClick={() => navigate("/status-solicitacoes")}>
+                <span className="topic-button-icon admin-topic-button-icon"><Icon name="cart" size={20} /></span>
                 <span className="topic-button-title">Aprovar Solicitações</span>
                 <span className="topic-button-desc">Revisar e aprovar solicitações de materiais</span>
               </button>
-              <button className="topic-button" onClick={() => navigate("/relatorios")}>
-                <span className="topic-button-icon"><Icon name="chart" size={22} /></span>
+              <button className="topic-button admin-topic-button" onClick={() => navigate("/relatorios")}>
+                <span className="topic-button-icon admin-topic-button-icon"><Icon name="chart" size={20} /></span>
                 <span className="topic-button-title">Relatórios</span>
                 <span className="topic-button-desc">Ver relatórios e indicadores das obras</span>
               </button>
-              <button className="topic-button" onClick={() => navigate("/register")}>
-                <span className="topic-button-icon"><Icon name="person-add" size={22} /></span>
+              <button className="topic-button admin-topic-button" onClick={() => navigate("/register")}>
+                <span className="topic-button-icon admin-topic-button-icon"><Icon name="person-add" size={20} /></span>
                 <span className="topic-button-title">Cadastrar Funcionário</span>
                 <span className="topic-button-desc">Adicionar novo encarregado ou supervisor</span>
               </button>
             </div>
+            </section>
           </>
         )}
       </div>

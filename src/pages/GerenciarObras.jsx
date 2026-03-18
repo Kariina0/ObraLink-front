@@ -15,7 +15,9 @@ import {
 import { extractApiMessage } from "../services/response";
 import { AuthContext } from "../context/AuthContext";
 import { isAdmin } from "../constants/permissions";
+import { PAGE_LIMIT_OBRAS } from "../constants/pagination";
 import "../styles/pages.css";
+import "../styles/modal.css";
 
 // ─── Labels de status ─────────────────────────────────────────────────────────
 // Sincronizados com STATUS_OBRA do back-end (constants/index.js).
@@ -56,6 +58,7 @@ function GerenciarObras() {
   const [busca, setBusca]               = useState("");
   const [filtroStatus, setFiltroStatus] = useState("");
   const buscaTimerRef                   = useRef(null);
+  const [displayPage, setDisplayPage]   = useState(1);
 
   // ── seleção de obra para exibir detalhes / editar ───────────────────────────
   const [obraSelecionada, setObraSelecionada] = useState(null);
@@ -77,8 +80,9 @@ function GerenciarObras() {
   const [encLoading, setEncLoading]   = useState(false);
   const [encErro, setEncErro]         = useState(null);
 
-  // ── confirmação de exclusão inline (sem window.confirm) ─────────────────────
-  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  // ── confirmação de exclusão por modal ────────────────────────────────────────
+  const [obraParaRemover, setObraParaRemover] = useState(null);
+  const [removendoObraId, setRemovendoObraId] = useState(null);
 
   // ── carregamento de usuários disponíveis (apenas quando abre painel de encarregados) ────
   // ── Fetch de obras com filtros server-side ──────────────────────────────────────
@@ -115,12 +119,18 @@ function GerenciarObras() {
     return () => clearTimeout(buscaTimerRef.current);
   }, [busca, filtroStatus, carregarObras]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    setDisplayPage(1);
+  }, [busca, filtroStatus]);
+
   const loadUsuarios = async (obraId) => {
     try {
       setUserLoading(true);
+      setEncErro(null);
       const data = await getEncarregadosDisponiveis(obraId);
       setUsuarios(Array.isArray(data) ? data : []);
-    } catch (_) {
+    } catch (err) {
+      setEncErro("Não foi possível carregar os usuários disponíveis. Tente novamente.");
       setUsuarios([]);
     } finally {
       setUserLoading(false);
@@ -220,17 +230,20 @@ function GerenciarObras() {
 
   // ── Excluir obra ────────────────────────────────────────────────────────────
   const handleExcluir = (obra) => {
-    // Abre confirmação inline em vez de window.confirm
-    setDeleteConfirmId(obra.id);
+    setObraParaRemover(obra);
   };
 
-  const confirmExcluir = async (obra) => {
+  const confirmExcluir = async () => {
+    if (!obraParaRemover) return;
     try {
-      await deleteObra(obra.id);
-      setDeleteConfirmId(null);
+      setRemovendoObraId(obraParaRemover.id);
+      await deleteObra(obraParaRemover.id);
+      setObraParaRemover(null);
       await loadObras();
     } catch (err) {
       setErro(extractApiMessage(err, "Não foi possível remover a obra."));
+    } finally {
+      setRemovendoObraId(null);
     }
   };
 
@@ -579,58 +592,63 @@ function GerenciarObras() {
   }
 
   // ── Lista de obras (modo principal) ────────────────────────────────────────
+  const DISPLAY_LIMIT = PAGE_LIMIT_OBRAS;
+  const totalDisplayPages = Math.max(1, Math.ceil(obras.length / DISPLAY_LIMIT));
+  const currentDisplayPage = Math.min(displayPage, totalDisplayPages);
+  const obrasPaginadas = obras.slice(
+    (currentDisplayPage - 1) * DISPLAY_LIMIT,
+    currentDisplayPage * DISPLAY_LIMIT,
+  );
+
   return (
     <Layout>
       <div className="page-container" style={{ maxWidth: "1000px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--espacamento-md)", marginBottom: "var(--espacamento-lg)" }}>
-          <div>
-            <h1 className="page-title" style={{ marginBottom: "var(--espacamento-xs)" }}>Obras</h1>
-            <p className="page-description" style={{ marginBottom: 0 }}>
-              Gerencie as obras e equipes de campo.
-            </p>
-          </div>
+        <div className="go-header-row">
+          <h1 className="page-title go-page-title">Obras</h1>
 
           {/* Botão de cadastro — apenas admin */}
           {admin && (
             <button
-              className="button-primary"
+              className="button-primary go-register-button"
               onClick={abrirCriar}
-              style={{ width: "auto", padding: "14px 28px" }}
             >
               + Cadastrar obra
             </button>
           )}
         </div>
+        <p className="page-description go-page-description">
+          Gerencie as obras e equipes de campo.
+        </p>
 
         {/* ── Filtros de busca ─────────────────────────────────────────── */}
-        <div style={{
-          display: "flex",
-          gap: "var(--espacamento-md)",
-          flexWrap: "wrap",
-          marginBottom: "var(--espacamento-lg)",
-        }}>
-          <div className="form-group" style={{ flex: 1, minWidth: "200px", marginBottom: 0 }}>
-            <label htmlFor="busca">Buscar pelo nome</label>
-            <input
-              id="busca"
-              type="text"
-              placeholder="Digite o nome da obra..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-            />
-          </div>
-          <div className="form-group" style={{ flex: "0 0 200px", marginBottom: 0 }}>
-            <label htmlFor="filtroStatus">Status</label>
-            <select
-              id="filtroStatus"
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value)}
-            >
-              <option value="">Todos os status</option>
-              {Object.entries(STATUS_LABELS).map(([val, lbl]) => (
-                <option key={val} value={val}>{lbl}</option>
-              ))}
-            </select>
+        <div className="ss-filters go-filters">
+          <div className="ss-filters-grid go-filters-grid">
+            <div className="ss-filter-field go-filter-field--search">
+              <label className="ss-filter-label" htmlFor="busca">Buscar pelo nome</label>
+              <input
+                id="busca"
+                type="text"
+                className="ss-filter-input"
+                placeholder="Digite o nome da obra..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+            </div>
+
+            <div className="ss-filter-field go-filter-field--status">
+              <label className="ss-filter-label" htmlFor="filtroStatus">Status</label>
+              <select
+                id="filtroStatus"
+                className="ss-filter-select"
+                value={filtroStatus}
+                onChange={(e) => setFiltroStatus(e.target.value)}
+              >
+                <option value="">Todos os status</option>
+                {Object.entries(STATUS_LABELS).map(([val, lbl]) => (
+                  <option key={val} value={val}>{lbl}</option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -676,16 +694,10 @@ function GerenciarObras() {
         {/* ── Cards de obras ───────────────────────────────────────────── */}
         {!loading && (
           <div className="obras-list">
-            {obras.map((obra) => (
+            {obrasPaginadas.map((obra) => (
               <div key={obra.id} className="obra-card">
-                {/* Cabeçalho do card */}
-                <div style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  marginBottom: "var(--espacamento-sm)",
-                }}>
-                  <h3 style={{ margin: 0 }}>
+                <div className="obra-card-header">
+                  <h3 className="obra-card-title">
                     {obra.nome || obra.descricao || `Obra #${obra.id}`}
                   </h3>
                   <span className={`obra-status ${obra.status || "ativa"}`}>
@@ -693,127 +705,98 @@ function GerenciarObras() {
                   </span>
                 </div>
 
-                {/* Código */}
                 {obra.codigo && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    <strong>Código:</strong> {obra.codigo}
+                  <p className="obra-card-code">
+                    <span className="obra-card-label">Código:</span> {obra.codigo}
                   </p>
                 )}
 
-                {/* Cliente */}
-                {obra.cliente && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    <strong>Cliente:</strong> {obra.cliente}
-                  </p>
-                )}
-
-                {/* Endereço */}
                 {obra.endereco && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    <strong>Endereço:</strong> {obra.endereco}
+                  <p className="obra-card-address">
+                    {obra.endereco}
                   </p>
                 )}
 
-                {/* Datas */}
-                {obra.dataInicio && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    <strong>Início:</strong>{" "}
-                    {new Date(obra.dataInicio).toLocaleDateString("pt-BR")}
+                {(obra.dataInicio || obra.dataPrevisaoTermino) && (
+                  <p className="obra-card-meta">
+                    {obra.dataInicio && (
+                      <>
+                        <span className="obra-card-label">Início:</span>{" "}
+                        {new Date(obra.dataInicio).toLocaleDateString("pt-BR")}
+                      </>
+                    )}
+                    {obra.dataInicio && obra.dataPrevisaoTermino && " · "}
+                    {obra.dataPrevisaoTermino && (
+                      <>
+                        <span className="obra-card-label">Previsão:</span>{" "}
+                        {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR")}
+                      </>
+                    )}
                   </p>
                 )}
 
-                {obra.dataPrevisaoTermino && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    <strong>Previsão de término:</strong>{" "}
-                    {new Date(obra.dataPrevisaoTermino).toLocaleDateString("pt-BR")}
-                  </p>
-                )}
-
-                {/* Descrição resumida */}
                 {obra.descricao && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "0 0 4px 0" }}>
-                    {obra.descricao.length > 120
-                      ? `${obra.descricao.substring(0, 120)}...`
-                      : obra.descricao}
+                  <p className="obra-card-description">
+                    {obra.descricao}
                   </p>
                 )}
 
-                {/* Encarregados vinculados */}
                 {Array.isArray(obra.encarregados) && obra.encarregados.length > 0 && (
-                  <p style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)", margin: "var(--espacamento-xs) 0 0 0" }}>
-                    <strong>Encarregados:</strong>{" "}
+                  <p className="obra-card-encarregados">
+                    <span className="obra-card-label">Encarregados:</span>{" "}
                     {obra.encarregados.map((e) => e.nome || `#${e.id}`).join(", ")}
                   </p>
                 )}
 
                 {/* Ações do admin */}
                 {admin && (
-                  <div style={{
-                    display: "flex",
-                    gap: "var(--espacamento-sm)",
-                    marginTop: "var(--espacamento-md)",
-                    flexWrap: "wrap",
-                  }}>
-                    {deleteConfirmId === obra.id ? (
-                      /* ── Confirmação inline de exclusão ─────────────── */
-                      <>
-                        <div style={{
-                          width: "100%",
-                          background: "var(--cor-perigo-clara)",
-                          border: "2px solid var(--cor-perigo)",
-                          borderRadius: "var(--borda-radius)",
-                          padding: "var(--espacamento-sm) var(--espacamento-md)",
-                          marginBottom: "var(--espacamento-xs)",
-                        }}>
-                          <p style={{ margin: 0, fontWeight: 700, color: "var(--cor-perigo)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-                            Deseja remover a obra <em>"{obra.nome || `#${obra.id}`}"</em>? Esta ação é permanente e não pode ser desfeita.
-                          </p>
-                        </div>
-                        <button
-                          className="button-danger"
-                          onClick={() => confirmExcluir(obra)}
-                          style={{ padding: "10px 18px", flex: 1 }}
-                        >
-                          Sim, remover obra
-                        </button>
-                        <button
-                          className="button-secondary"
-                          onClick={() => setDeleteConfirmId(null)}
-                          style={{ padding: "10px 18px", flex: 1 }}
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
-                      /* ── Botões normais ──────────────────────────────── */
-                      <>
-                        <button
-                          className="button-secondary"
-                          onClick={() => abrirEditar(obra)}
-                          style={{ padding: "10px 18px", flex: 1 }}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="button-secondary"
-                          onClick={() => abrirEncarregados(obra)}
-                          style={{ padding: "10px 18px", flex: 1 }}
-                        >
-                          Encarregados
-                        </button>
-                        <button
-                          className="button-danger"
-                          onClick={() => handleExcluir(obra)}
-                          style={{ padding: "10px 18px" }}
-                        >
-                          Remover
-                        </button>
-                      </>
-                    )}
+                  <div className="obra-card-actions">
+                    <button
+                      className="button-secondary obra-card-btn"
+                      onClick={() => abrirEditar(obra)}
+                      style={{ flex: 1 }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="button-secondary obra-card-btn"
+                      onClick={() => abrirEncarregados(obra)}
+                      style={{ flex: 1 }}
+                    >
+                      Encarregados
+                    </button>
+                    <button
+                      className="button-danger obra-card-btn-danger"
+                      onClick={() => handleExcluir(obra)}
+                    >
+                      Remover
+                    </button>
                   </div>
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {!loading && !erro && obras.length > 0 && totalDisplayPages > 1 && (
+          <div className="paginacao-controles">
+            <button
+              className="button-secondary"
+              onClick={() => setDisplayPage((p) => Math.max(1, p - 1))}
+              disabled={currentDisplayPage === 1}
+            >
+              ← Anterior
+            </button>
+            <span className="paginacao-info">
+              Página {currentDisplayPage} de {totalDisplayPages}
+            </span>
+            <button
+              className="button-secondary"
+              onClick={() => setDisplayPage((p) => Math.min(totalDisplayPages, p + 1))}
+              disabled={currentDisplayPage === totalDisplayPages}
+            >
+              Próxima →
+            </button>
           </div>
         )}
 
@@ -826,6 +809,54 @@ function GerenciarObras() {
             {obras.length} {obras.length === 1 ? "obra encontrada" : "obras encontradas"}
             {(busca || filtroStatus) ? " para os filtros aplicados" : ""}.
           </p>
+        )}
+
+        {obraParaRemover && (
+          <div
+            className="modal-overlay"
+            onClick={() => setObraParaRemover(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Remover obra"
+          >
+            <div className="modal-content go-delete-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">Remover obra</h2>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setObraParaRemover(null)}
+                  aria-label="Fechar confirmação"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+              <div className="modal-body go-delete-modal-body">
+                <p>Tem certeza que deseja remover esta obra? Esta ação não pode ser desfeita.</p>
+              </div>
+              <div className="modal-footer go-delete-modal-footer">
+                <button
+                  type="button"
+                  className="button-secondary measurements-table-button"
+                  onClick={() => setObraParaRemover(null)}
+                  disabled={removendoObraId === obraParaRemover.id}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="button-danger measurements-table-button"
+                  onClick={confirmExcluir}
+                  disabled={removendoObraId === obraParaRemover.id}
+                >
+                  {removendoObraId === obraParaRemover.id ? "Removendo..." : "Sim, remover"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </Layout>

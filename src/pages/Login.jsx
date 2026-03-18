@@ -110,6 +110,11 @@ const Login = () => {
   const handleResetPassword = async (e) => {
     if (e?.preventDefault) e.preventDefault();
 
+    if (!recoveryCode.trim()) {
+      setRecoveryError("Informe o código de recuperação recebido por e-mail.");
+      return;
+    }
+
     const senhaError = validarSenha(novaSenha);
     if (senhaError) {
       setRecoveryError(senhaError);

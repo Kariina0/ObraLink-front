@@ -31,8 +31,11 @@ function Profile() {
         // Buscar dados da obra se o usuário tiver uma obra atribuída
         if (userData?.obraAtual) {
           try {
-            const obraData = await getObra(userData.obraAtual);
-            setObra(obraData);
+            const obraId = Number(userData.obraAtual);
+            if (Number.isInteger(obraId) && obraId > 0) {
+              const obraData = await getObra(obraId);
+              setObra(obraData);
+            }
           } catch (err) {
             // Não bloqueia a exibição do perfil se falhar ao buscar a obra
           }

@@ -32,6 +32,7 @@ function getTodayInputDate() {
 // ── Cartão de detalhes de um diário recente ───────────────────────────────────
 function CardDiario({ d, formatarData }) {
   const [expandido, setExpandido] = useState(false);
+  if (!d) return null;
 
   const atividades  = Array.isArray(d.atividades)  ? d.atividades  : [];
   const ocorrencias = Array.isArray(d.ocorrencias) ? d.ocorrencias : [];

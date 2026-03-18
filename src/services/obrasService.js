@@ -4,7 +4,7 @@ import { extractApiData, extractApiList } from "./response";
 // ─── Helpers de serialização ─────────────────────────────────────────────────
 
 function tryParseJson(value) {
-  if (!value || typeof value !== "string") return value;
+  if (value === null || value === undefined || typeof value !== "string") return value;
   try { return JSON.parse(value); } catch (_) { return value; }
 }
 

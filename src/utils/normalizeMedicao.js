@@ -6,6 +6,8 @@
  * @returns {object} medição normalizada
  */
 export function normalizeMedicao(m) {
+  if (!m || typeof m !== 'object') return null;
+
   const itens = Array.isArray(m.itens) ? m.itens : [];
   const firstItem = itens[0] || {};
 
@@ -23,10 +25,10 @@ export function normalizeMedicao(m) {
     responsavelNome: m.responsavelNome || null,
     // area contém o nome do ambiente (string), areaCalculada contém o valor numérico
     areaNome: m.area || null,
-    area: parseNumOrNull(m.areaCalculada ?? firstItem.quantidade),
-    volume: parseNumOrNull(m.volume ?? firstItem.valorTotal),
+    area: parseNumOrNull(m.areaCalculada ?? firstItem?.quantidade),
+    volume: parseNumOrNull(m.volume ?? firstItem?.valorTotal),
     tipoServico: m.tipoServico || null,
-    observacoes: m.observacoes || firstItem.observacoes,
+    observacoes: m.observacoes || firstItem?.observacoes || null,
     status: m.status || "enviada",
     motivoRejeicao: m.motivoRejeicao || null,
     itens,

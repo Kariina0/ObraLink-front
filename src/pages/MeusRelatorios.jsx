@@ -139,7 +139,8 @@ function MeusRelatorios() {
     try {
       const fileRes = await api.get(`/files/${firstAnexoId}`);
       setFotoUrls((prev) => ({ ...prev, [med.id]: fileRes?.data?.data?.url || null }));
-    } catch {
+    } catch (err) {
+      console.warn(`Não foi possível carregar anexo ${firstAnexoId} para medição ${med.id}:`, err.message);
       setFotoUrls((prev) => ({ ...prev, [med.id]: null }));
     }
   }, [fotoUrls]);
@@ -191,34 +192,23 @@ function MeusRelatorios() {
         </p>
 
         {/* ── Painel de Filtros ─────────────────────────────────────────────── */}
-        <div
-          className="form-container"
-          style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
-        >
-          <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
-            Filtros
-          </p>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: "var(--espacamento-md)",
-            alignItems: "end",
-          }}>
-            {/* Filtro por Obra */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-obra">Obra</label>
-              <select id="rf-obra" name="obra" value={filtros.obra} onChange={handleFiltro}>
-                <option value="">Todas</option>
+        <div className="ss-filters">
+          <div className="ss-filters-grid">
+            {/* Obra */}
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="rf-obra">Obra</label>
+              <select id="rf-obra" name="obra" className="ss-filter-select" value={filtros.obra} onChange={handleFiltro}>
+                <option value="">Todas as obras</option>
                 {obras.map((o) => (
                   <option key={o.id} value={o.id}>{o.nome || `Obra #${o.id}`}</option>
                 ))}
               </select>
             </div>
 
-            {/* Filtro por Responsável */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-resp">Responsável</label>
-              <select id="rf-resp" name="responsavel" value={filtros.responsavel} onChange={handleFiltro}>
+            {/* Responsável */}
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="rf-resp">Responsável</label>
+              <select id="rf-resp" name="responsavel" className="ss-filter-select" value={filtros.responsavel} onChange={handleFiltro}>
                 <option value="">Todos</option>
                 {responsaveis.map((u) => (
                   <option key={u.id} value={u.id}>{u.nome}</option>
@@ -226,11 +216,11 @@ function MeusRelatorios() {
               </select>
             </div>
 
-            {/* Filtro por Status */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-status">Status</label>
-              <select id="rf-status" name="status" value={filtros.status} onChange={handleFiltro}>
-                <option value="">Todos</option>
+            {/* Status */}
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="rf-status">Status</label>
+              <select id="rf-status" name="status" className="ss-filter-select" value={filtros.status} onChange={handleFiltro}>
+                <option value="">Todos os status</option>
                 <option value="enviada">Aguardando revisão</option>
                 <option value="aprovada">Aprovada</option>
                 <option value="rejeitada">Rejeitada</option>
@@ -238,58 +228,68 @@ function MeusRelatorios() {
               </select>
             </div>
 
-            {/* Filtro por Tipo de Serviço */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-tipo">Tipo de serviço</label>
-              <select id="rf-tipo" name="tipoServico" value={filtros.tipoServico} onChange={handleFiltro}>
-                <option value="">Todos</option>
+            {/* Tipo de serviço */}
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="rf-tipo">Tipo de serviço</label>
+              <select id="rf-tipo" name="tipoServico" className="ss-filter-select" value={filtros.tipoServico} onChange={handleFiltro}>
+                <option value="">Todos os tipos</option>
                 {TIPOS_SERVICO.map((t) => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
 
-            {/* Filtro Data Início */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-ini">Data início</label>
-              <input id="rf-ini" type="date" name="dataInicio" value={filtros.dataInicio} onChange={handleFiltro} />
+            {/* Período */}
+            <div className="ss-filter-field ss-filter-field--date">
+              <label className="ss-filter-label">Período</label>
+              <div className="ss-filter-date-group">
+                <input
+                  id="rf-ini"
+                  type="date"
+                  name="dataInicio"
+                  className="ss-filter-select ss-filter-date"
+                  value={filtros.dataInicio}
+                  onChange={handleFiltro}
+                  aria-label="Data inicial"
+                />
+                <span className="ss-filter-date-sep">até</span>
+                <input
+                  id="rf-fim"
+                  type="date"
+                  name="dataFim"
+                  className="ss-filter-select ss-filter-date"
+                  value={filtros.dataFim}
+                  onChange={handleFiltro}
+                  aria-label="Data final"
+                />
+              </div>
             </div>
 
-            {/* Filtro Data Fim */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-fim">Data fim</label>
-              <input id="rf-fim" type="date" name="dataFim" value={filtros.dataFim} onChange={handleFiltro} />
-            </div>
-
-            <div style={{ display: "flex", alignItems: "flex-end" }}>
-              <button
-                className="button-secondary"
-                onClick={limparFiltros}
-                disabled={!temFiltroAtivo}
-                style={{ width: "100%", padding: "15px 12px" }}
-              >
-                Limpar filtros
-              </button>
+            {/* Ações */}
+            <div className="ss-filter-actions">
+              {temFiltroAtivo && (
+                <button type="button" className="ss-filter-clear" onClick={limparFiltros}>
+                  Limpar filtros
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         {/* ── Exportação CSV ───────────────────────────────────────────────── */}
-        <div
-          className="form-container"
-          style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
-        >
-          <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
-            Exportar dados
+        <div className="mr-export">
+          <p className="mr-export-title">Exportar dados</p>
+          <p className="mr-export-desc">
+            O boletim de medições aplica os filtros de obra e período ativos nesta tela.
           </p>
-          <div style={{ display: "flex", gap: "var(--espacamento-md)", flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="rf-periodo">Período (painel de obras)</label>
+          <div className="mr-export-row">
+            <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+              <label className="ss-filter-label" htmlFor="rf-periodo">Período — painel de obras</label>
               <select
                 id="rf-periodo"
+                className="mr-export-select"
                 value={exportPeriodo}
                 onChange={(e) => setExportPeriodo(Number(e.target.value))}
-                style={{ minWidth: 160 }}
               >
                 <option value={7}>Últimos 7 dias</option>
                 <option value={30}>Últimos 30 dias</option>
@@ -298,45 +298,30 @@ function MeusRelatorios() {
               </select>
             </div>
             <button
-              className="button-secondary"
+              className="mr-export-btn"
               onClick={handleExportObras}
               disabled={exportLoading}
-              style={{ padding: "10px 18px" }}
             >
               {exportLoading ? "Gerando..." : "⬇ Painel de obras (CSV)"}
             </button>
             <button
-              className="button-secondary"
+              className="mr-export-btn"
               onClick={handleExportMedicoes}
               disabled={exportLoading}
-              style={{ padding: "10px 18px" }}
             >
               {exportLoading ? "Gerando..." : "⬇ Boletim de medições (CSV)"}
             </button>
           </div>
           {exportErro && (
-            <p className="erro-msg" style={{ marginTop: "var(--espacamento-sm)", marginBottom: 0 }}>
+            <p className="erro-msg" style={{ marginTop: "8px", marginBottom: 0 }}>
               {exportErro}
             </p>
           )}
-          <p style={{
-            marginTop: "var(--espacamento-sm)",
-            marginBottom: 0,
-            fontSize: "var(--tamanho-fonte-pequena)",
-            color: "var(--cor-texto-secundario)",
-          }}>
-            O boletim de medições aplica os filtros de obra e período ativos nesta tela.
-          </p>
         </div>
 
         {/* ── Resumo de status (clicável para filtrar) ─────────────────────── */}
         {!loading && totalSummary > 0 && (
-          <div style={{
-            display: "flex",
-            gap: "var(--espacamento-sm)",
-            flexWrap: "wrap",
-            marginBottom: "var(--espacamento-md)",
-          }}>
+          <div className="mr-status-chips">
             {[
               { key: "enviada",   label: "Aguardando revisão", bg: "var(--cor-aviso-clara)",   color: "var(--cor-aviso)"            },
               { key: "aprovada",  label: "Aprovadas",           bg: "var(--cor-sucesso-clara)", color: "var(--cor-sucesso)"          },
@@ -347,17 +332,9 @@ function MeusRelatorios() {
                 <button
                   key={key}
                   onClick={() => toggleStatusFiltro(key)}
+                  className={`mr-status-chip${filtros.status === key ? " is-active" : ""}`}
+                  style={{ background: bg, color }}
                   title={filtros.status === key ? "Remover filtro" : `Filtrar por: ${label}`}
-                  style={{
-                    padding: "5px 14px",
-                    borderRadius: "20px",
-                    cursor: "pointer",
-                    border: filtros.status === key ? `2px solid ${color}` : "2px solid transparent",
-                    background: bg,
-                    color,
-                    fontWeight: 700,
-                    fontSize: "var(--tamanho-fonte-pequena)",
-                  }}
                 >
                   {statusSummary[key]} {label}
                 </button>
@@ -386,14 +363,10 @@ function MeusRelatorios() {
 
         {!loading && medicoes.length > 0 && (
           <>
-              <p style={{
-                marginBottom: "var(--espacamento-md)",
-                color: "var(--cor-texto-secundario)",
-                fontSize: "var(--tamanho-fonte-pequena)",
-              }}>
-                Exibindo {medicoes.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
-                {temFiltroAtivo ? " (filtros ativos)" : ""}.
-              </p>
+            <p className="mr-listagem-info">
+              Exibindo {medicoes.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
+              {temFiltroAtivo ? " (filtros ativos)" : ""}.
+            </p>
 
             {medicoes.map((m) => {
               const fotoUrl   = fotoUrls[m.id] !== undefined ? fotoUrls[m.id] : getFotoUrl(m);
@@ -409,64 +382,38 @@ function MeusRelatorios() {
                 : null;
 
               return (
-                <div key={m.id} className="card" style={{ marginBottom: "var(--espacamento-md)" }}>
+                <div key={m.id} className="mr-card">
                   {/* ── Cabeçalho do card ────────────────────────────────── */}
                   <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      cursor: "pointer",
-                      marginBottom: expanded ? "var(--espacamento-md)" : 0,
-                    }}
+                    className={`mr-card-header${expanded ? " is-expanded" : ""}`}
                     onClick={() => toggleExpand(m)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => e.key === "Enter" && toggleExpand(m)}
                   >
-                    <div>
-                      <p style={{ fontWeight: 700, fontSize: "var(--tamanho-fonte-grande)", margin: 0 }}>
+                    <div className="mr-card-info">
+                      <p className="mr-card-title">
                         {m.obraNome
                           ? `Obra: ${m.obraNome}`
                           : m.obra
                             ? `Obra #${m.obra}`
                             : "Obra não identificada"}
                       </p>
-                      <p style={{ margin: "2px 0 0 0", color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-                        {dataMedicao && <>Medição: {dataMedicao}{dataEnvio && ` · Enviado em: ${dataEnvio}`}</>}
+                      <p className="mr-card-meta">
+                        {dataMedicao && <>Medição: {dataMedicao}{dataEnvio && ` · Enviado: ${dataEnvio}`}</>}
                         {!dataMedicao && dataEnvio && <>Enviado em: {dataEnvio}</>}
                         {tipoLabel && ` · ${tipoLabel}`}
                       </p>
                       {m.responsavelNome && (
-                        <p style={{ margin: "2px 0 0 0", color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-                          Responsável: {m.responsavelNome}
-                        </p>
+                        <p className="mr-card-meta">Responsável: {m.responsavelNome}</p>
                       )}
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: "var(--espacamento-sm)" }}>
-                      <span
-                        className={`status-badge ${STATUS_CLASS[m.status] || "pendente"}`}
-                        style={{
-                          display: "inline-block",
-                          padding: "5px 12px",
-                          borderRadius: "20px",
-                          fontSize: "var(--tamanho-fonte-pequena)",
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                          background: STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso-clara)"
-                                    : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo-clara)"
-                                    : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-fundo)"
-                                    : "var(--cor-aviso-clara)",
-                          color:      STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso)"
-                                    : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo)"
-                                    : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-texto-secundario)"
-                                    : "var(--cor-aviso)",
-                        }}
-                      >
+                    <div className="mr-card-right">
+                      <span className={`mr-badge ${STATUS_CLASS[m.status] || "enviada"}`}>
                         {STATUS_LABEL[m.status] || m.status || "Enviada"}
                       </span>
-                      <span style={{ fontSize: "18px", color: "var(--cor-texto-secundario)" }}>
+                      <span className="mr-card-toggle" aria-hidden="true">
                         {expanded ? "▲" : "▼"}
                       </span>
                     </div>
@@ -607,13 +554,7 @@ function MeusRelatorios() {
 
             {/* ── Paginação ──────────────────────────────────────────── */}
             {totalPages > 1 && (
-              <div style={{
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: "var(--espacamento-md)",
-                marginTop: "var(--espacamento-xl)",
-              }}>
+              <div className="paginacao-controles">
                 <button
                   className="button-secondary"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -622,7 +563,7 @@ function MeusRelatorios() {
                 >
                   ← Anterior
                 </button>
-                <span style={{ fontSize: "var(--tamanho-fonte-base)", color: "var(--cor-texto-secundario)" }}>
+                <span className="paginacao-info">
                   Página {currentPage} de {totalPages}
                 </span>
                 <button

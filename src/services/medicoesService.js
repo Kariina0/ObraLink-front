@@ -14,16 +14,17 @@ export async function createMedicao(payload) {
   }
 
   // Dimensões brutas — preservadas individualmente no banco
-  const comprimento = Number(payload?.comprimento) || null;
-  const largura     = Number(payload?.largura)     || null;
-  const altura      = Number(payload?.altura)      || null;
-  const quantidadeDireta = Number(payload?.quantidadeDireta) || null;
+  const comprimento = payload?.comprimento != null ? Number(payload.comprimento) : null;
+  const largura     = payload?.largura != null ? Number(payload.largura) : null;
+  const altura      = payload?.altura != null ? Number(payload.altura) : null;
+  const quantidadeDireta = payload?.quantidadeDireta != null ? Number(payload.quantidadeDireta) : null;
   const unidadeMedicao = payload?.unidadeMedicao || "m²";
 
   // Valores geométricos calculados (podem vir pré-calculados do componente ou calculados aqui)
-  const areaCalculada = (comprimento && largura) ? comprimento * largura : (Number(payload?.areaCalculada) || 0);
-  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (Number(payload?.volume) || 0);
-  const quantidadeItem = quantidadeDireta || areaCalculada || volume || (comprimento || 0);
+  const areaCalculada = (comprimento && largura) ? comprimento * largura : (payload?.areaCalculada != null ? Number(payload.areaCalculada) : 0);
+  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (payload?.volume != null ? Number(payload.volume) : 0);
+  // Determina quantidade baseado no modo de medição
+  const quantidadeItem = quantidadeDireta != null ? quantidadeDireta : (volume > 0 ? volume : (areaCalculada > 0 ? areaCalculada : comprimento || 0));
 
   // Nome do ambiente (quarto, sala, etc.) — campo "area" da entidade Medição no back-end
   const areaNome   = payload?.area        || null;
@@ -135,15 +136,16 @@ export async function getMedicaoById(id) {
 }
 
 export async function updateMedicao(id, payload) {
-  const comprimento = Number(payload?.comprimento) || null;
-  const largura     = Number(payload?.largura)     || null;
-  const altura      = Number(payload?.altura)      || null;
-  const quantidadeDireta = Number(payload?.quantidadeDireta) || null;
+  const comprimento = payload?.comprimento != null ? Number(payload.comprimento) : null;
+  const largura     = payload?.largura != null ? Number(payload.largura) : null;
+  const altura      = payload?.altura != null ? Number(payload.altura) : null;
+  const quantidadeDireta = payload?.quantidadeDireta != null ? Number(payload.quantidadeDireta) : null;
   const unidadeMedicao = payload?.unidadeMedicao || "m²";
 
-  const areaCalculada = (comprimento && largura) ? comprimento * largura : (Number(payload?.areaCalculada) || 0);
-  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (Number(payload?.volume) || 0);
-  const quantidadeItem = quantidadeDireta || areaCalculada || volume || (comprimento || 0);
+  const areaCalculada = (comprimento && largura) ? comprimento * largura : (payload?.areaCalculada != null ? Number(payload.areaCalculada) : 0);
+  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (payload?.volume != null ? Number(payload.volume) : 0);
+  // Determina quantidade baseado no modo de medição
+  const quantidadeItem = quantidadeDireta != null ? quantidadeDireta : (volume > 0 ? volume : (areaCalculada > 0 ? areaCalculada : comprimento || 0));
 
   const areaNome    = payload?.area        || null;
   const tipoServico = payload?.tipoServico || null;
