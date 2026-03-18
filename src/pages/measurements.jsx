@@ -180,14 +180,27 @@ function Measurements() {
       if (openLightbox && fotoUrls[m.id]) setLightbox(fotoUrls[m.id]);
       return;
     }
-    const firstId = Array.isArray(m.anexos) ? m.anexos.find((id) => typeof id === "number") : null;
-    if (!firstId) {
+    // Suporta anexos como números (IDs) ou objetos ({ id, url, ... })
+    const firstAnexo = Array.isArray(m.anexos)
+      ? m.anexos.find((a) => typeof a === "number" || (a && typeof a === "object" && a.id))
+      : null;
+    if (!firstAnexo) {
       setFotoUrls((prev) => ({ ...prev, [m.id]: null }));
       return;
     }
+    // Se o objeto já carrega a URL, usa diretamente sem nova requisição
+    if (typeof firstAnexo === "object" && firstAnexo.url) {
+      const url = firstAnexo.url.startsWith("http")
+        ? firstAnexo.url
+        : `${BASE_URL}${firstAnexo.url.startsWith("/") ? "" : "/"}${firstAnexo.url}`;
+      setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
+      if (openLightbox) setLightbox(url);
+      return;
+    }
+    const firstId = typeof firstAnexo === "number" ? firstAnexo : firstAnexo.id;
     try {
       const res = await api.get(`/files/${firstId}`);
-      const url = res?.data?.data?.url || null;
+      const url = res?.data?.data?.url || res?.data?.url || null;
       setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
       if (openLightbox && url) setLightbox(url);
     } catch {
@@ -201,7 +214,7 @@ function Measurements() {
 
     measurements.forEach((m) => {
       const directUrl = getFotoMedUrl(m);
-      const hasAnexo = Array.isArray(m.anexos) && m.anexos.some((id) => typeof id === "number");
+      const hasAnexo = Array.isArray(m.anexos) && m.anexos.some((a) => typeof a === "number" || (a && typeof a === "object" && a.id));
       if (!directUrl && hasAnexo && fotoUrls[m.id] === undefined) {
         resolveFotoUrl(m, false);
       }
@@ -496,7 +509,7 @@ function Measurements() {
                         <td className="measurements-photo-cell">
                           {(() => {
                             const directUrl = getFotoMedUrl(m);
-                            const hasAnexo  = Array.isArray(m.anexos) && m.anexos.some((id) => typeof id === "number");
+                            const hasAnexo  = Array.isArray(m.anexos) && m.anexos.some((a) => typeof a === "number" || (a && typeof a === "object" && a.id));
                             if (!directUrl && !hasAnexo) {
                               return <span className="measurements-photo-empty">—</span>;
                             }
