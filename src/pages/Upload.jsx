@@ -4,12 +4,13 @@
 // Quando tipoArquivo === "problema", detalheProblema também é exigido.
 // Suporte offline: arquivos são salvos localmente (IndexedDB) e enviados
 // automaticamente quando a conexão é restaurada.
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useContext, useMemo } from "react";
 import Layout from "../components/Layout";
 import { saveFileOffline, getPendingFiles, markAsUploaded, removeOfflineFile, incrementRetryCount, MAX_RETRY_COUNT } from "../utils/db";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
+import { AuthContext } from "../context/AuthContext";
 import "../styles/pages.css";
 
 // Tipos de arquivo aceitos pelo back-end
@@ -23,13 +24,20 @@ const TIPOS_ARQUIVO = [
   { value: "outros", label: "Outros" },
 ];
 
+function getTodayInputDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function Upload() {
+  const { user } = useContext(AuthContext);
   const [file, setFile] = useState(null);
   const [form, setForm] = useState({
     obra: "",           // ID da obra relacionada (obrigatório)
     tipoArquivo: "",    // tipo do arquivo (obrigatório)
     descricao: "",      // descrição do arquivo (obrigatório)
     detalheProblema: "", // obrigatório apenas quando tipoArquivo === "problema"
+    dataEnvio: getTodayInputDate(),
+    observacoes: "",
   });
   const { obras, loadingObras } = useObras(100);
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -37,6 +45,17 @@ function Upload() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const fileInputRef = useRef(null);
+  const nomeResponsavel = user?.nome || "Usuário autenticado";
+
+  const obrasOrdenadas = useMemo(() => {
+    return [...obras].sort((a, b) => {
+      const nomeA = (a?.nome || "").toLowerCase();
+      const nomeB = (b?.nome || "").toLowerCase();
+      return nomeA.localeCompare(nomeB);
+    });
+  }, [obras]);
 
   // Monitora estado da conexão
   useEffect(() => {
@@ -105,6 +124,31 @@ function Upload() {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
+  function processSelectedFile(nextFile) {
+    if (!nextFile) return;
+    setFile(nextFile);
+  }
+
+  function handleFileInputChange(e) {
+    processSelectedFile(e.target.files?.[0] || null);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    setIsDragActive(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    setIsDragActive(false);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragActive(false);
+    processSelectedFile(event.dataTransfer?.files?.[0] || null);
+  }
+
   async function loadPendingFiles() {
     // getPendingFiles já filtra somente os não enviados e reconstrói o File
     const files = await getPendingFiles();
@@ -114,6 +158,8 @@ function Upload() {
   // ─── Validações locais antes de enviar ──────────────────────────────────
   function validar() {
     if (!file) return "Selecione um arquivo para enviar.";
+    if (!form.dataEnvio) return "Informe a data do envio.";
+    if (form.dataEnvio > getTodayInputDate()) return "Não é permitido enviar arquivo com data futura.";
     if (!form.obra) return "Selecione a obra relacionada ao arquivo.";
     if (!form.tipoArquivo) return "Selecione o tipo do arquivo.";
     if (!form.descricao.trim() || form.descricao.trim().length < 3)
@@ -140,6 +186,8 @@ function Upload() {
       obra: Number(form.obra),
       tipoArquivo: form.tipoArquivo,
       descricao: form.descricao.trim(),
+      dataEnvio: form.dataEnvio,
+      observacoes: form.observacoes?.trim() || "",
       ...(form.tipoArquivo === "problema" && { detalheProblema: form.detalheProblema.trim() }),
     };
 
@@ -151,7 +199,14 @@ function Upload() {
       );
       await loadPendingFiles();
       setFile(null);
-      setForm((prev) => ({ ...prev, tipoArquivo: "", descricao: "", detalheProblema: "" }));
+      setForm((prev) => ({
+        ...prev,
+        tipoArquivo: "",
+        descricao: "",
+        detalheProblema: "",
+        observacoes: "",
+        dataEnvio: getTodayInputDate(),
+      }));
       return;
     }
 
@@ -164,7 +219,14 @@ function Upload() {
           (response?.nomeOriginal || response?.nome || file.name),
       );
       setFile(null);
-      setForm((prev) => ({ ...prev, tipoArquivo: "", descricao: "", detalheProblema: "" }));
+      setForm((prev) => ({
+        ...prev,
+        tipoArquivo: "",
+        descricao: "",
+        detalheProblema: "",
+        observacoes: "",
+        dataEnvio: getTodayInputDate(),
+      }));
     } catch (err) {
       setError("Erro ao enviar arquivo: " + extractApiMessage(err));
     } finally {
@@ -194,8 +256,7 @@ function Upload() {
       <div className="page-container">
         <h1 className="page-title">Enviar Arquivos</h1>
         <p style={{ fontSize: "var(--tamanho-fonte-base)", color: "var(--cor-texto-secundario)", marginBottom: "var(--espacamento-lg)", lineHeight: "1.6" }}>
-          Envie documentos, fotos e relatórios relacionados às obras. Preencha todos os campos
-          para facilitar a identificação posterior do arquivo.
+          Envie documentos, fotos e relatórios da obra de forma organizada e rápida.
         </p>
 
         {/* Indicador de status da conexão */}
@@ -214,7 +275,35 @@ function Upload() {
           </div>
         )}
 
-        <div className="form-container">
+        <div className="form-container medicao-form-container">
+          <div className="medicao-topo-grid" aria-label="Informações do envio">
+            <div className="form-group medicao-topo-grid__responsavel">
+              <label htmlFor="responsavelEnvio">Responsável pelo envio</label>
+              <input
+                id="responsavelEnvio"
+                type="text"
+                value={nomeResponsavel}
+                readOnly
+                className="medicao-readonly-input"
+                aria-readonly="true"
+              />
+            </div>
+
+            <div className="form-group medicao-topo-grid__data">
+              <label htmlFor="dataEnvio">Data do envio</label>
+              <input
+                id="dataEnvio"
+                type="date"
+                name="dataEnvio"
+                value={form.dataEnvio}
+                max={getTodayInputDate()}
+                onChange={handleChange}
+              />
+            </div>
+          </div>
+
+          <div className="upload-section">
+            <h3 className="upload-section__title">Informações do Arquivo</h3>
 
           {/* ─── Obra Relacionada ────────────────────────────────────────── */}
           <div className="form-group">
@@ -230,7 +319,7 @@ function Upload() {
                 required
               >
                 <option value="">Selecione a obra</option>
-                {obras.map((o) => (
+                {obrasOrdenadas.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.nome || `Obra #${o.id}`}
                   </option>
@@ -263,15 +352,12 @@ function Upload() {
               id="descricao"
               type="text"
               name="descricao"
-              placeholder="Ex: Foto da parede norte após revestimento"
+              placeholder="Ex: Foto da fachada"
               value={form.descricao}
               onChange={handleChange}
               required
               maxLength={500}
             />
-            <small style={{ color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-              Descreva brevemente o conteúdo do arquivo para facilitar a busca futura.
-            </small>
           </div>
 
           {/* ─── Detalhe do Problema (condicional) ────────────────────────────
@@ -282,109 +368,138 @@ function Upload() {
               <textarea
                 id="detalheProblema"
                 name="detalheProblema"
-                placeholder="Descreva o problema identificado: localização, natureza, gravidade, etc."
+                placeholder="Ex: infiltração na parede do banheiro"
                 value={form.detalheProblema}
                 onChange={handleChange}
                 rows="4"
                 required
               />
-              <small style={{ color: "var(--cor-perigo)", fontSize: "var(--tamanho-fonte-pequena)", fontWeight: 600 }}>
-                Obrigatório para arquivos do tipo "Registro de Problema".
-              </small>
             </div>
           )}
 
+          <div className="form-group">
+            <label htmlFor="observacoes">Observações (opcional)</label>
+            <textarea
+              id="observacoes"
+              name="observacoes"
+              placeholder="Ex: arquivo referente ao turno da manhã"
+              value={form.observacoes}
+              onChange={handleChange}
+              rows="4"
+            />
+          </div>
+          </div>
+
+          <div className="upload-section">
+            <h3 className="upload-section__title">Envio do Arquivo</h3>
+
           {/* ─── Seleção do Arquivo ─────────────────────────────────────────── */}
           <div className="form-group">
-            <label htmlFor="arquivo">Selecionar Arquivo *</label>
+            <label htmlFor="arquivo">Arquivo *</label>
+            <div
+              className={`medicao-upload-dropzone ${isDragActive ? "is-drag-active" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+            >
+              <p className="medicao-upload-dropzone__title">Arraste o arquivo aqui ou selecione</p>
+              <button
+                type="button"
+                className="button-secondary medicao-upload-dropzone__button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                Selecionar arquivo
+              </button>
+              <p className="medicao-upload-dropzone__hint">PDF, imagem ou documento de obra.</p>
+              {file && (
+                <p className="medicao-upload-dropzone__filename">
+                  {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
+
             <input
+              ref={fileInputRef}
               id="arquivo"
               type="file"
-              className="file-input"
-              onChange={(e) => setFile(e.target.files[0] || null)}
+              className="medicao-upload-hidden-input"
+              onChange={handleFileInputChange}
             />
-            {file && (
-              <p style={{ marginTop: "var(--espacamento-sm)", color: "var(--cor-texto-secundario)" }}>
-                Arquivo selecionado: <strong>{file.name}</strong>
-                {" "}({(file.size / 1024).toFixed(1)} KB)
-              </p>
-            )}
+          </div>
+
           </div>
 
           {error && <p className="erro-msg">{error}</p>}
           {success && <p className="success-msg">{success}</p>}
 
-          <button
-            className="button-primary"
-            onClick={handleUpload}
-            disabled={loading}
-          >
-            {loading
-              ? "Enviando arquivo..."
-              : online
-              ? "Enviar Arquivo"
-              : "Salvar para Envio Posterior"}
-          </button>
+          <div className="medicao-actions">
+            <button
+              className="button-primary medicao-actions__primary"
+              onClick={handleUpload}
+              disabled={loading}
+            >
+              {loading
+                ? "Enviando arquivo..."
+                : online
+                ? "Enviar Arquivo"
+                : "Salvar para Envio Posterior"}
+            </button>
+          </div>
         </div>
 
         {/* ─── Arquivos Pendentes (Offline) ────────────────────────────────── */}
-        <h3 style={{ marginTop: "var(--espacamento-xl)", marginBottom: "var(--espacamento-md)", fontSize: "var(--tamanho-subtitulo)", fontWeight: 600 }}>
+        <h3 className="upload-pendentes-title">
           Arquivos Aguardando Envio
         </h3>
 
         {pendingFiles.length === 0 ? (
-          <div className="card" style={{ textAlign: "center", padding: "var(--espacamento-lg)" }}>
-            <p style={{ color: "var(--cor-texto-secundario)" }}>Nenhum arquivo aguardando envio.</p>
+          <div className="card upload-pendente-card upload-pendente-card--empty">
+            <p>Sem arquivos pendentes no momento.</p>
           </div>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul className="upload-pendente-list">
             {pendingFiles.map((f) => (
               <li
                 key={f.id}
-                className="card"
-                style={{
-                  marginBottom: "var(--espacamento-sm)",
-                  padding: "var(--espacamento-md)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: "var(--espacamento-md)",
-                }}
+                className="card upload-pendente-card"
               >
-                <div style={{ flex: 1 }}>
-                  <strong style={{ fontSize: "var(--tamanho-fonte-base)" }}>
+                <div className="upload-pendente-card__content">
+                  <strong className="upload-pendente-card__name">
                     {f.file?.name || "Arquivo sem nome"}
                   </strong>
                   {f.metadata && (
-                    <p style={{ margin: "4px 0 0 0", fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)" }}>
-                      {f.metadata.tipoArquivo && <span>Tipo: {f.metadata.tipoArquivo} &bull; </span>}
+                    <p className="upload-pendente-card__meta">
+                      {f.metadata.tipoArquivo && <span>Tipo: {f.metadata.tipoArquivo} • </span>}
                       {f.metadata.descricao && <span>{f.metadata.descricao}</span>}
                     </p>
                   )}
-                  <p style={{ margin: "4px 0 0 0", fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)" }}>
+                  <p className="upload-pendente-card__meta">
                     Salvo em: {f.savedAt ? new Date(f.savedAt).toLocaleString("pt-BR") : "—"}
                   </p>
                 </div>
-                <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexShrink: 0 }}>
+                <div className="upload-pendente-card__actions">
                   {online && (
                     <button
-                      className="button-primary"
-                      style={{ padding: "8px 14px", fontSize: "var(--tamanho-fonte-pequena)" }}
+                      className="button-primary upload-pendente-card__button"
                       onClick={() => handleReenviaPendente(f)}
                     >
                       Enviar agora
                     </button>
                   )}
                   <button
-                    style={{
-                      padding: "8px 14px",
-                      fontSize: "var(--tamanho-fonte-pequena)",
-                      border: "1px solid var(--cor-perigo)",
-                      color: "var(--cor-perigo)",
-                      borderRadius: "var(--borda-radius)",
-                      background: "transparent",
-                      cursor: "pointer",
-                    }}
+                    className="button-secondary upload-pendente-card__button"
                     onClick={() => handleRemovePendente(f.id)}
                   >
                     Remover

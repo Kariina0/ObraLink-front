@@ -2,46 +2,138 @@
 // Registrar / Editar Medição — disponível para encarregado, supervisor e admin.
 // Quando acessada via /medicoes?editar=:id, carrega a medição existente para edição.
 // O select de obra carrega apenas as obras vinculadas ao usuário logado.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo, useContext } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
 import { createMedicao, getMedicaoById, updateMedicao } from "../services/medicoesService";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
-import { AREAS_MEDICAO, TIPOS_SERVICO } from "../constants/medicao";
+import {
+  AREAS_MEDICAO,
+  AREAS_MEDICAO_GRUPOS,
+  MEDICAO_CAMPO_MODO,
+  TIPOS_SERVICO,
+  TIPOS_SERVICO_GRUPOS,
+  TIPO_SERVICO_CONFIG,
+} from "../constants/medicao";
 import { enqueueSyncOperation } from "../utils/syncQueue";
+import { AuthContext } from "../context/AuthContext";
 import "../styles/pages.css";
+
+const TOAST_TIMEOUT_MS = 4500;
+
+const STATUS_OBRA_LABELS = {
+  em_andamento: "Em andamento",
+  planejamento: "Planejamento",
+  pausada: "Pausada",
+  paralisada: "Paralisada",
+  concluida: "Concluída",
+  cancelada: "Cancelada",
+};
+
+function formatDateToInput(dateValue) {
+  if (!dateValue) return "";
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+}
+
+function getTodayInputDate() {
+  return formatDateToInput(new Date());
+}
+
+const FORM_INITIAL = {
+  obra: "",
+  area: "",
+  tipoServico: "",
+  dataMedicao: getTodayInputDate(),
+  comprimento: "",
+  largura: "",
+  altura: "",
+  quantidade: "",
+  observacoes: "",
+};
 
 function EnviarMedicao() {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [searchParams] = useSearchParams();
   const editarId = searchParams.get("editar") ? Number(searchParams.get("editar")) : null;
   const modoEdicao = editarId !== null && editarId > 0;
 
-  const [form, setForm] = useState({
-    obra: "",
-    area: "",          // nome do ambiente (quarto, sala, etc.)
-    tipoServico: "",   // tipo de serviço realizado
-    comprimento: "",
-    largura: "",
-    altura: "",
-    observacoes: "",
-  });
+  const [form, setForm] = useState(FORM_INITIAL);
 
   const [foto, setFoto] = useState(null);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [toast, setToast] = useState(null);
   const [loadingMode, setLoadingMode] = useState(null);
   const [loadingEdicao, setLoadingEdicao] = useState(modoEdicao);
+  const [isDragActive, setIsDragActive] = useState(false);
+  const fileInputRef = useRef(null);
   const { obras, loadingObras } = useObras(100);
+  const nomeResponsavel = user?.nome || "Usuário autenticado";
+
+  const mapaAreas = useMemo(
+    () => Object.fromEntries(AREAS_MEDICAO.map((item) => [item.value, item.label])),
+    [],
+  );
+  const mapaTipos = useMemo(
+    () => Object.fromEntries(TIPOS_SERVICO.map((item) => [item.value, item.label])),
+    [],
+  );
+
+  const configTipoServico = TIPO_SERVICO_CONFIG[form.tipoServico] || {
+    modo: MEDICAO_CAMPO_MODO.AREA_CL,
+    unidade: "m²",
+    resumo: "Informe os dados da medição.",
+  };
+
+  const usaQuantidadeDireta = configTipoServico.modo === MEDICAO_CAMPO_MODO.QUANTIDADE;
+  const usaComprimento = !usaQuantidadeDireta;
+  const usaLargura = configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CL || configTipoServico.modo === MEDICAO_CAMPO_MODO.VOLUME;
+  const usaAltura = configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CA || configTipoServico.modo === MEDICAO_CAMPO_MODO.VOLUME;
+
+  const obraPorStatus = useMemo(() => {
+    const ativas = [];
+    const outras = [];
+
+    obras.forEach((obra) => {
+      const status = obra?.status;
+      if (status === "em_andamento" || status === "planejamento") {
+        ativas.push(obra);
+      } else {
+        outras.push(obra);
+      }
+    });
+
+    return { ativas, outras };
+  }, [obras]);
+
+  function showToast(message, options = {}) {
+    setToast({
+      message,
+      showViewAction: options.showViewAction === true,
+    });
+  }
+
+  function processSelectedFile(file) {
+    if (!file) return;
+
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+
+    setFoto(file);
+    setPreview(URL.createObjectURL(file));
+  }
 
   useEffect(() => {
     const onSyncCompleted = (event) => {
       const total = event?.detail?.synced || 0;
       if (total > 0) {
-        setSuccess(`Sincronização concluída: ${total} registro(s) offline enviado(s).`);
+        showToast(`Sincronização concluída: ${total} registro(s) offline enviado(s).`);
       }
     };
 
@@ -63,9 +155,13 @@ function EnviarMedicao() {
           obra:         m.obra != null ? String(m.obra) : "",
           area:         m.area         || m.areaNome     || "",
           tipoServico:  m.tipoServico   || "",
+          dataMedicao:  formatDateToInput(m.data) || getTodayInputDate(),
           comprimento:  m.comprimento   != null ? String(m.comprimento)  : "",
           largura:      m.largura       != null ? String(m.largura)      : "",
           altura:       m.altura        != null ? String(m.altura)       : "",
+          quantidade:   m.quantidade    != null
+            ? String(m.quantidade)
+            : (m.itens?.[0]?.quantidade != null ? String(m.itens[0].quantidade) : ""),
           observacoes:  m.observacoes   || "",
         });
       } catch (err) {
@@ -96,29 +192,90 @@ function EnviarMedicao() {
     };
   }, [preview]);
 
+  useEffect(() => {
+    if (!toast) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, TOAST_TIMEOUT_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   // ─── Cálculos automáticos de área e volume ──────────────────────────────────
   const comprimento = Number(form.comprimento) || 0;
   const largura = Number(form.largura) || 0;
   const altura = Number(form.altura) || 0;
-  const areaCalculada = comprimento * largura;
+  const quantidadeDireta = Number(form.quantidade) || 0;
+
+  const areaCalculada = configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CA
+    ? comprimento * altura
+    : comprimento * largura;
   const volume = comprimento * largura * altura;
 
+  const quantidadeCalculada = useMemo(() => {
+    if (configTipoServico.modo === MEDICAO_CAMPO_MODO.QUANTIDADE) return quantidadeDireta;
+    if (configTipoServico.modo === MEDICAO_CAMPO_MODO.VOLUME) return volume;
+    return areaCalculada;
+  }, [configTipoServico.modo, quantidadeDireta, volume, areaCalculada]);
+
+  const dimensoesResumo = useMemo(() => {
+    if (configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CA) {
+      return "C x A";
+    }
+    if (configTipoServico.modo === MEDICAO_CAMPO_MODO.VOLUME) {
+      return "C x L x A";
+    }
+    if (configTipoServico.modo === MEDICAO_CAMPO_MODO.QUANTIDADE) {
+      return "Quantidade direta";
+    }
+    return "C x L";
+  }, [configTipoServico.modo]);
+
   function handleChange(event) {
+    const { name, value } = event.target;
+
+    if (name === "tipoServico") {
+      const nextConfig = TIPO_SERVICO_CONFIG[value] || null;
+      const isQuantidade = nextConfig?.modo === MEDICAO_CAMPO_MODO.QUANTIDADE;
+
+      setForm((prev) => ({
+        ...prev,
+        tipoServico: value,
+        ...(isQuantidade
+          ? { comprimento: "", largura: "", altura: "" }
+          : { quantidade: "" }),
+      }));
+      return;
+    }
+
     setForm({
       ...form,
-      [event.target.name]: event.target.value,
+      [name]: value,
     });
   }
 
   function handleFotoChange(event) {
     const file = event.target.files[0];
-    if (file) {
-      if (preview) {
-        URL.revokeObjectURL(preview);
-      }
-      setFoto(file);
-      setPreview(URL.createObjectURL(file));
-    }
+    processSelectedFile(file);
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    setIsDragActive(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    setIsDragActive(false);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragActive(false);
+
+    const file = event.dataTransfer?.files?.[0];
+    processSelectedFile(file);
   }
 
   // ─── Envio do formulário ─────────────────────────────────────────────────────
@@ -126,7 +283,7 @@ function EnviarMedicao() {
     if (loadingMode) return;
 
     setError("");
-    setSuccess("");
+    setToast(null);
 
     // Validações no cliente antes de chamar a API
     if (!form.obra) {
@@ -141,30 +298,70 @@ function EnviarMedicao() {
       setError("Selecione o tipo de serviço realizado.");
       return;
     }
-    if (comprimento <= 0 || largura <= 0 || altura <= 0) {
-      setError("Comprimento, largura e altura devem ser maiores que zero.");
+    if (!form.dataMedicao) {
+      setError("Informe a data da medição.");
       return;
     }
 
+    const hoje = getTodayInputDate();
+    if (form.dataMedicao > hoje) {
+      setError("Não é permitido enviar medição com data futura.");
+      return;
+    }
+
+    if (usaQuantidadeDireta) {
+      if (quantidadeDireta <= 0) {
+        setError("Informe a quantidade executada.");
+        return;
+      }
+    } else {
+      if (usaComprimento && comprimento <= 0) {
+        setError("Informe um comprimento maior que zero.");
+        return;
+      }
+      if (usaLargura && largura <= 0) {
+        setError("Informe uma largura maior que zero.");
+        return;
+      }
+      if (usaAltura && altura <= 0) {
+        setError("Informe uma altura maior que zero.");
+        return;
+      }
+    }
+
+    if (quantidadeCalculada <= 0) {
+      setError("Não foi possível calcular a medição com os dados informados.");
+      return;
+    }
+
+    const dataMedicaoISO = new Date(`${form.dataMedicao}T12:00:00`).toISOString();
+    const tipoServicoLabel = mapaTipos[form.tipoServico] || "Serviço";
+    const areaLabel = mapaAreas[form.area] || "Área";
+
     const body = {
       obra: Number(form.obra),
-      data: new Date().toISOString(),
+      data: dataMedicaoISO,
       area: form.area,
       tipoServico: form.tipoServico,
       observacoes: form.observacoes,
       status: mode,
-      comprimento: Number(form.comprimento),
-      largura: Number(form.largura),
-      altura: Number(form.altura),
-      areaCalculada,
-      volume,
+      unidadeMedicao: configTipoServico.unidade,
+      quantidadeDireta: usaQuantidadeDireta ? quantidadeDireta : null,
+      comprimento: usaComprimento ? Number(form.comprimento) : null,
+      largura: usaLargura ? Number(form.largura) : null,
+      altura: usaAltura ? Number(form.altura) : null,
+      areaCalculada:
+        configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CL || configTipoServico.modo === MEDICAO_CAMPO_MODO.AREA_CA
+          ? areaCalculada
+          : null,
+      volume: configTipoServico.modo === MEDICAO_CAMPO_MODO.VOLUME ? volume : null,
       itens: [
         {
-          descricao: `Medição geométrica — ${form.area}`,
-          quantidade: areaCalculada,
-          unidade: "m²",
+          descricao: `${tipoServicoLabel} — ${areaLabel}`,
+          quantidade: quantidadeCalculada,
+          unidade: configTipoServico.unidade,
           valorUnitario: null,
-          valorTotal: volume > 0 ? volume : areaCalculada,
+          valorTotal: quantidadeCalculada,
           observacoes: form.observacoes || "",
           local: form.area || "",
         },
@@ -207,10 +404,13 @@ function EnviarMedicao() {
         ? (mode === "rascunho" ? "Rascunho atualizado" : "Medição atualizada")
         : (mode === "rascunho" ? "Rascunho salvo"      : "Medição enviada");
 
-      setSuccess(
+      showToast(
         navigator.onLine
           ? `${acaoLabel} com sucesso!`
           : `Sem internet: ${acaoLabel.toLowerCase()} para sincronização automática.`,
+        {
+          showViewAction: navigator.onLine && mode === "enviada",
+        },
       );
 
       if (!modoEdicao) {
@@ -219,9 +419,11 @@ function EnviarMedicao() {
           obra: obras.length === 1 ? String(obras[0].id) : "",
           area: "",
           tipoServico: "",
+          dataMedicao: getTodayInputDate(),
           comprimento: "",
           largura: "",
           altura: "",
+          quantidade: "",
           observacoes: "",
         });
         setFoto(null);
@@ -232,7 +434,7 @@ function EnviarMedicao() {
       if (!navigator.onLine || !status) {
         await enqueueSyncOperation("medicao", fullBody);
         const acaoLabel = mode === "rascunho" ? "Rascunho" : "Medição";
-        setSuccess(`Sem conexão: ${acaoLabel.toLowerCase()} salvo offline e será sincronizado ao reconectar.`);
+        showToast(`Sem conexão: ${acaoLabel.toLowerCase()} salvo offline e será sincronizado ao reconectar.`);
       } else {
         setError(
           modoEdicao
@@ -248,6 +450,36 @@ function EnviarMedicao() {
   return (
     <Layout>
       <div className="page-container">
+        {toast && (
+          <div className="medicao-toast" role="status" aria-live="polite">
+            <div className="medicao-toast__content">
+              <p className="medicao-toast__message">{toast.message}</p>
+              <div className="medicao-toast__actions">
+                {toast.showViewAction && (
+                  <button
+                    type="button"
+                    className="button-secondary medicao-toast__action-button"
+                    onClick={() => {
+                      setToast(null);
+                      navigate("/medicoes-lista");
+                    }}
+                  >
+                    Ver medições
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="medicao-toast__close"
+                  onClick={() => setToast(null)}
+                  aria-label="Fechar notificação"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <h1 className="page-title">
           {modoEdicao ? "Editar Medição" : "Registrar Nova Medição"}
         </h1>
@@ -270,8 +502,35 @@ function EnviarMedicao() {
             event.preventDefault();
             handleSubmit("enviada");
           }}
-          className="form-container"
+          className="form-container medicao-form-container"
         >
+          <div className="medicao-topo-grid" aria-label="Informações da medição">
+            <div className="form-group medicao-topo-grid__responsavel">
+              <label htmlFor="responsavelMedicao">Responsável pela Medição</label>
+              <input
+                id="responsavelMedicao"
+                type="text"
+                value={nomeResponsavel}
+                readOnly
+                className="medicao-readonly-input"
+                aria-readonly="true"
+              />
+            </div>
+
+            <div className="form-group medicao-topo-grid__data">
+              <label htmlFor="dataMedicao">Data da Medição *</label>
+              <input
+                id="dataMedicao"
+                type="date"
+                name="dataMedicao"
+                value={form.dataMedicao}
+                max={getTodayInputDate()}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
+
           {/* ─── Seleção de Obra ─────────────────────────────────────────────
               O back-end filtra automaticamente conforme o perfil do usuário:
               encarregados veem apenas as obras às quais estão vinculados. */}
@@ -297,11 +556,24 @@ function EnviarMedicao() {
                 {obras.length > 1 && (
                   <option value="">Selecione a obra</option>
                 )}
-                {obras.map((obra) => (
-                  <option key={obra.id} value={obra.id}>
-                    {obra.nome || `Obra #${obra.id}`}
-                  </option>
-                ))}
+                {obraPorStatus.ativas.length > 0 && (
+                  <optgroup label="Obras ativas">
+                    {obraPorStatus.ativas.map((obra) => (
+                      <option key={obra.id} value={obra.id}>
+                        {obra.nome || `Obra #${obra.id}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {obraPorStatus.outras.length > 0 && (
+                  <optgroup label="Outras obras">
+                    {obraPorStatus.outras.map((obra) => (
+                      <option key={obra.id} value={obra.id}>
+                        {obra.nome || `Obra #${obra.id}`} • {STATUS_OBRA_LABELS[obra.status] || "Sem status"}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             )}
           </div>
@@ -317,9 +589,13 @@ function EnviarMedicao() {
               onChange={handleChange}
               required
             >
-              <option value="">Selecione a área</option>
-              {AREAS_MEDICAO.map((a) => (
-                <option key={a.value} value={a.value}>{a.label}</option>
+                <option value="">Selecione a área</option>
+              {AREAS_MEDICAO_GRUPOS.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.options.map((value) => (
+                    <option key={value} value={value}>{mapaAreas[value] || value}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -335,74 +611,125 @@ function EnviarMedicao() {
               onChange={handleChange}
               required
             >
-              <option value="">Selecione o tipo de serviço</option>
-              {TIPOS_SERVICO.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+              <option value="">Selecione o serviço</option>
+              {TIPOS_SERVICO_GRUPOS.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.options.map((value) => (
+                    <option key={value} value={value}>{mapaTipos[value] || value}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
+
+            {form.tipoServico && (
+              <div className="medicao-unidade-info">
+                <span className="medicao-unidade-info__badge">Unidade: {configTipoServico.unidade}</span>
+                <span className="medicao-unidade-info__text">Medição por: {dimensoesResumo}</span>
+              </div>
+            )}
           </div>
+
+          {form.tipoServico && (
+            <div className="medicao-service-helper">
+              <strong>Orientação rápida:</strong> {configTipoServico.resumo}
+            </div>
+          )}
 
           {/* ─── Dimensões ──────────────────────────────────────────────────── */}
-          <div className="form-group">
-            <label htmlFor="comprimento">Comprimento (metros) *</label>
-            <input
-              id="comprimento"
-              type="number"
-              step="0.01"
-              min="0.01"
-              name="comprimento"
-              placeholder="Ex: 10,50"
-              value={form.comprimento}
-              onChange={handleChange}
-              required
-            />
-            <small style={{ color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-              Exemplo: para parede de alvenaria, use o lado horizontal (ex: 5.20m).
-            </small>
-          </div>
+          {usaQuantidadeDireta ? (
+            <div className="form-group">
+              <label htmlFor="quantidade">
+                Quantidade *
+                <span className="medicao-help" title="Use para serviços contados por unidade, como portas e luminárias." aria-hidden="true">ⓘ</span>
+              </label>
+              <input
+                id="quantidade"
+                type="number"
+                step="1"
+                min="1"
+                name="quantidade"
+                placeholder="Ex: 12"
+                value={form.quantidade}
+                onChange={handleChange}
+                required={usaQuantidadeDireta}
+              />
+            </div>
+          ) : (
+            <div className="medicao-dimensoes-grid">
+              {usaComprimento && (
+                <div className="form-group medicao-dimensoes-grid__item">
+                  <label htmlFor="comprimento">
+                    Comprimento (m) *
+                    <span className="medicao-help" title="Medida principal do trecho." aria-hidden="true">ⓘ</span>
+                  </label>
+                  <input
+                    id="comprimento"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    name="comprimento"
+                    placeholder="Ex: 5.20"
+                    value={form.comprimento}
+                    onChange={handleChange}
+                    required={usaComprimento}
+                  />
+                </div>
+              )}
 
-          <div className="form-group">
-            <label htmlFor="largura">Largura (metros) *</label>
-            <input
-              id="largura"
-              type="number"
-              step="0.01"
-              min="0.01"
-              name="largura"
-              placeholder="Ex: 8,00"
-              value={form.largura}
-              onChange={handleChange}
-              required
-            />
-            <small style={{ color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-              Exemplo: para piso, use a segunda dimensão do ambiente (ex: 3.80m).
-            </small>
-          </div>
+              {usaLargura && (
+                <div className="form-group medicao-dimensoes-grid__item">
+                  <label htmlFor="largura">
+                    Largura (m) *
+                    <span className="medicao-help" title="Use a segunda medida da área." aria-hidden="true">ⓘ</span>
+                  </label>
+                  <input
+                    id="largura"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    name="largura"
+                    placeholder="Ex: 3.80"
+                    value={form.largura}
+                    onChange={handleChange}
+                    required={usaLargura}
+                  />
+                </div>
+              )}
 
-          <div className="form-group">
-            <label htmlFor="altura">Altura (metros) *</label>
-            <input
-              id="altura"
-              type="number"
-              step="0.01"
-              min="0.01"
-              name="altura"
-              placeholder="Ex: 3,00"
-              value={form.altura}
-              onChange={handleChange}
-              required
-            />
-            <small style={{ color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)" }}>
-              Exemplo: para alvenaria, use o pé-direito (ex: 2.80m). Para piso, informe 0.01.
-            </small>
-          </div>
+              {usaAltura && (
+                <div className="form-group medicao-dimensoes-grid__item">
+                  <label htmlFor="altura">
+                    Altura (m) *
+                    <span className="medicao-help" title="Use o pé-direito ou altura da superfície." aria-hidden="true">ⓘ</span>
+                  </label>
+                  <input
+                    id="altura"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    name="altura"
+                    placeholder="Ex: 2.80"
+                    value={form.altura}
+                    onChange={handleChange}
+                    required={usaAltura}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ─── Cálculos Automáticos ──────────────────────────────────────── */}
-          {(comprimento > 0 || largura > 0 || altura > 0) && (
+          {form.tipoServico && quantidadeCalculada > 0 && (
             <div className="summary" style={{ marginBottom: "var(--espacamento-lg)" }}>
-              <h3>Cálculos Automáticos</h3>
-              <p><strong>Área calculada:</strong> {areaCalculada.toFixed(2)} m²</p>
-              <p><strong>Volume calculado:</strong> {volume.toFixed(2)} m³</p>
+              <h3>Resumo da Medição</h3>
+              <p>
+                <strong>Quantidade calculada:</strong> {quantidadeCalculada.toFixed(2)} {configTipoServico.unidade}
+              </p>
+              {!usaQuantidadeDireta && (
+                <p>
+                  <strong>Base de cálculo:</strong> {dimensoesResumo}
+                </p>
+              )}
             </div>
           )}
 
@@ -412,7 +739,7 @@ function EnviarMedicao() {
             <textarea
               id="observacoes"
               name="observacoes"
-              placeholder="Adicione informações extras sobre a medição, condições encontradas, etc."
+              placeholder="Ex: parede com umidade no canto"
               value={form.observacoes}
               onChange={handleChange}
               rows="4"
@@ -422,15 +749,49 @@ function EnviarMedicao() {
           {/* ─── Foto da Medição ─────────────────────────────────────────────── */}
           <div className="form-group">
             <label htmlFor="foto">Foto da Medição (opcional)</label>
+
+            <div
+              className={`medicao-upload-dropzone ${isDragActive ? "is-drag-active" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+            >
+              <p className="medicao-upload-dropzone__title">Arraste a imagem aqui</p>
+              <p className="medicao-upload-dropzone__subtitle">ou</p>
+              <button
+                type="button"
+                className="button-secondary medicao-upload-dropzone__button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                Selecionar arquivo
+              </button>
+              <p className="medicao-upload-dropzone__hint">JPG, PNG ou WEBP • até 1 imagem por medição.</p>
+              {foto && <p className="medicao-upload-dropzone__filename">Arquivo selecionado: {foto.name}</p>}
+            </div>
+
             <input
+              ref={fileInputRef}
               id="foto"
               type="file"
               accept="image/*"
               onChange={handleFotoChange}
-              className="file-input"
+              className="medicao-upload-hidden-input"
             />
+
             {preview && (
-              <div style={{ marginTop: "var(--espacamento-sm)" }}>
+              <div className="medicao-upload-preview">
                 <img
                   src={preview}
                   alt="Pré-visualização da foto selecionada"
@@ -447,67 +808,42 @@ function EnviarMedicao() {
 
           {error && <p className="erro-msg">{error}</p>}
 
-          {success ? (
-            <div>
-              <p className="success-msg">{success}</p>
-              <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap", marginTop: "var(--espacamento-md)" }}>
-                <button
-                  type="button"
-                  className="button-primary"
-                  onClick={() => navigate("/medicoes-lista")}
-                  style={{ width: "auto", marginTop: 0 }}
-                >
-                  Ver minhas medições
-                </button>
-                {!modoEdicao && (
-                  <button
-                    type="button"
-                    className="button-secondary"
-                    onClick={() => setSuccess("")}
-                  >
-                    Registrar outra medição
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
+          <div className="medicao-actions">
+            <button
+              type="submit"
+              className="button-secondary medicao-actions__secondary"
+              disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
+              onClick={(event) => {
+                event.preventDefault();
+                handleSubmit("rascunho");
+              }}
+            >
+              {loadingMode === "rascunho" ? "Salvando..." : "Salvar como rascunho"}
+            </button>
+            <button
+              type="submit"
+              className="button-primary medicao-actions__primary"
+              disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
+              onClick={(event) => {
+                event.preventDefault();
+                handleSubmit("enviada");
+              }}
+            >
+              {loadingMode === "enviada"
+                ? (modoEdicao ? "Atualizando..." : "Enviando medição...")
+                : (modoEdicao ? "Reenviar para revisão" : "Enviar medição")}
+            </button>
+            {modoEdicao && (
               <button
-                type="submit"
-                className="button-secondary"
-                disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleSubmit("rascunho");
-                }}
+                type="button"
+                className="button-secondary medicao-actions__secondary"
+                onClick={() => navigate("/medicoes-lista")}
+                disabled={loadingMode !== null}
               >
-                {loadingMode === "rascunho" ? "Salvando..." : "Salvar como rascunho"}
+                Cancelar edição
               </button>
-              <button
-                type="submit"
-                className="button-primary"
-                disabled={loadingMode !== null || loadingObras || obras.length === 0 || loadingEdicao}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleSubmit("enviada");
-                }}
-              >
-                {loadingMode === "enviada"
-                  ? (modoEdicao ? "Atualizando..." : "Enviando medição...")
-                  : (modoEdicao ? "Reenviar para revisão" : "Enviar medição")}
-              </button>
-              {modoEdicao && (
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={() => navigate("/medicoes-lista")}
-                  disabled={loadingMode !== null}
-                >
-                  Cancelar edição
-                </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </form>
         )}
       </div>

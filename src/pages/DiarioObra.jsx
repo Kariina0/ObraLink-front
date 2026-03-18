@@ -25,7 +25,9 @@ const CLIMA_LABEL = Object.fromEntries(
 );
 
 // Data máxima aceita no input (hoje, no fuso local)
-const HOJE = new Date().toISOString().slice(0, 10);
+function getTodayInputDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // ── Cartão de detalhes de um diário recente ───────────────────────────────────
 function CardDiario({ d, formatarData }) {
@@ -135,7 +137,7 @@ function CardDiario({ d, formatarData }) {
 export default function DiarioObra() {
   const [form, setForm] = useState({
     obra: "",
-    data: HOJE,
+    data: getTodayInputDate(),
     clima: "",
     atividades: "",
     ocorrencias: "",
@@ -235,7 +237,7 @@ export default function DiarioObra() {
     }
 
     // Bloqueia data futura mesmo que o browser aceite digitação manual
-    if (form.data > HOJE) {
+    if (form.data > getTodayInputDate()) {
       setError("Não é permitido registrar diário com data futura.");
       return;
     }
@@ -338,7 +340,7 @@ export default function DiarioObra() {
               name="data"
               type="date"
               value={form.data}
-              max={HOJE}
+              max={getTodayInputDate()}
               onChange={handleChange}
               required
             />

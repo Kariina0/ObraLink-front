@@ -17,10 +17,13 @@ export async function createMedicao(payload) {
   const comprimento = Number(payload?.comprimento) || null;
   const largura     = Number(payload?.largura)     || null;
   const altura      = Number(payload?.altura)      || null;
+  const quantidadeDireta = Number(payload?.quantidadeDireta) || null;
+  const unidadeMedicao = payload?.unidadeMedicao || "m²";
 
   // Valores geométricos calculados (podem vir pré-calculados do componente ou calculados aqui)
   const areaCalculada = (comprimento && largura) ? comprimento * largura : (Number(payload?.areaCalculada) || 0);
   const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (Number(payload?.volume) || 0);
+  const quantidadeItem = quantidadeDireta || areaCalculada || volume || (comprimento || 0);
 
   // Nome do ambiente (quarto, sala, etc.) — campo "area" da entidade Medição no back-end
   const areaNome   = payload?.area        || null;
@@ -32,7 +35,7 @@ export async function createMedicao(payload) {
 
   const body = {
     obra:         obraNumero,
-    data:         new Date().toISOString(),
+    data:         payload?.data || new Date().toISOString(),
     area:         areaNome,
     tipoServico,
     observacoes:  payload?.observacoes || "",
@@ -46,11 +49,11 @@ export async function createMedicao(payload) {
     itens: [
       {
         descricao:    descricaoItem,
-        quantidade:   areaCalculada > 0 ? areaCalculada : (comprimento || 0),
-        unidade:      "m²",
+        quantidade:   quantidadeItem,
+        unidade:      unidadeMedicao,
         // volume é informação geométrica, não financeira — valorUnitario não se aplica
         valorUnitario: null,
-        valorTotal:    volume > 0 ? volume : areaCalculada,
+        valorTotal:    quantidadeItem,
         observacoes:   payload?.observacoes || "",
         local:         areaNome || "",
       },
@@ -135,14 +138,18 @@ export async function updateMedicao(id, payload) {
   const comprimento = Number(payload?.comprimento) || null;
   const largura     = Number(payload?.largura)     || null;
   const altura      = Number(payload?.altura)      || null;
+  const quantidadeDireta = Number(payload?.quantidadeDireta) || null;
+  const unidadeMedicao = payload?.unidadeMedicao || "m²";
 
   const areaCalculada = (comprimento && largura) ? comprimento * largura : (Number(payload?.areaCalculada) || 0);
   const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (Number(payload?.volume) || 0);
+  const quantidadeItem = quantidadeDireta || areaCalculada || volume || (comprimento || 0);
 
   const areaNome    = payload?.area        || null;
   const tipoServico = payload?.tipoServico || null;
 
   const body = {
+    data:         payload?.data,
     area:         areaNome,
     tipoServico,
     observacoes:  payload?.observacoes || "",
@@ -155,15 +162,19 @@ export async function updateMedicao(id, payload) {
     itens: [
       {
         descricao:     areaNome ? `Medição geométrica — ${areaNome}` : "Medição geométrica",
-        quantidade:    areaCalculada > 0 ? areaCalculada : (comprimento || 0),
-        unidade:       "m²",
+        quantidade:    quantidadeItem,
+        unidade:       unidadeMedicao,
         valorUnitario: null,
-        valorTotal:    volume > 0 ? volume : areaCalculada,
+        valorTotal:    quantidadeItem,
         observacoes:   payload?.observacoes || "",
         local:         areaNome || "",
       },
     ],
   };
+
+  if (!body.data) {
+    delete body.data;
+  }
 
   if (Array.isArray(payload?.anexos)) {
     const anexoIds = payload.anexos
