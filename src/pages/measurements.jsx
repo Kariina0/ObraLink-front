@@ -3,10 +3,9 @@
 // Encarregados veem apenas suas próprias medições; supervisores e admins veem todas.
 // Filtros são enviados ao back-end via query params para evitar tráfego desnecessário.
 
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-import PaginationControls from "../components/PaginationControls";
 import {
   aprovarMedicao,
   listAllMedicoesPaginado,
@@ -19,25 +18,24 @@ import { AuthContext } from "../context/AuthContext";
 import { isReviewer, isAdmin } from "../constants/permissions";
 import { TIPOS_SERVICO, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao";
 import { normalizeMedicao } from "../utils/normalizeMedicao";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 import { PAGE_LIMIT_MEDICOES } from "../constants/pagination";
 import api from "../services/api";
 import "../styles/pages.css";
 import "../styles/modal.css";
 
-const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
-
 function getFotoMedUrl(m) {
   const caminho = m.foto || m.fotoUrl || m.arquivo || m.arquivoUrl;
-  if (!caminho) return null;
-  if (caminho.startsWith("http")) return caminho;
-  // Compatibilidade com payload legado: apenas o nome do arquivo (sem path)
-  if (!caminho.startsWith("/")) {
-    return `${BASE_URL}/api/files/raw/outros/${caminho}`;
-  }
-  return `${BASE_URL}${caminho.startsWith("/") ? "" : "/"}${caminho}`;
+  return resolveImageUrl(caminho);
 }
 
 const PAGE_LIMIT = PAGE_LIMIT_MEDICOES;
+
+function formatPercent(value, total) {
+  if (!total) return "0%";
+  const percent = (value / total) * 100;
+  return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(percent)}%`;
+}
 
 function getInitialStatusSummary() {
   return {
@@ -58,14 +56,11 @@ function Measurements() {
   const { obras }                               = useObras(200);
   const [erro, setErro]                         = useState(null);
   const [sucesso, setSucesso]                   = useState(null);
-  const [initialLoading, setInitialLoading]     = useState(true);
-  const [tableLoading, setTableLoading]         = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce]       = useState(false);
+  const [loading, setLoading]                   = useState(true);
   const [actionLoadingId, setActionLoadingId]   = useState(null);
   const [fotoUrls, setFotoUrls]                 = useState({});
   const [lightbox, setLightbox]                 = useState(null);
   const [expandedMeasurementId, setExpandedMeasurementId] = useState(null);
-  const dashboardScopeRef                       = useRef("");
 
   // ── Ação inline: rejeição ou confirmação de aprovação ─────────────────────
   // inlineAction: { type: 'approve' | 'reject', id: number } | null
@@ -75,7 +70,6 @@ function Measurements() {
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems]   = useState(0);
-  const [dashboardTotalItems, setDashboardTotalItems] = useState(0);
   const [statusSummary, setStatusSummary] = useState(getInitialStatusSummary());
 
   // ── Filtros — todos enviados ao back-end como query params ─────────────────
@@ -88,25 +82,10 @@ function Measurements() {
     responsavel: "",
   });
 
-  const dashboardScopeKey = JSON.stringify({
-    obra: filtros.obra || "",
-    dataInicio: filtros.dataInicio || "",
-    dataFim: filtros.dataFim || "",
-    reviewer,
-  });
-
   // Carrega medições; re-executa sempre que os filtros ou página mudam
   const load = useCallback(async () => {
-    const isFirstLoad = !hasLoadedOnce;
-    const shouldRefreshDashboard = isFirstLoad || dashboardScopeRef.current !== dashboardScopeKey;
-
     try {
-      if (isFirstLoad) {
-        setInitialLoading(true);
-      } else {
-        setTableLoading(true);
-      }
-
+      setLoading(true);
       setErro(null);
 
       const params = { page: currentPage, limit: PAGE_LIMIT };
@@ -125,21 +104,14 @@ function Measurements() {
       const list = Array.isArray(res.data) ? res.data : [];
       setMeasurements(list.map(normalizeMedicao));
       setTotalItems(res.pagination?.totalItems ?? list.length);
-
-      if (shouldRefreshDashboard) {
-        setDashboardTotalItems(res.pagination?.totalItems ?? list.length);
-        setStatusSummary({ ...getInitialStatusSummary(), ...(res.statusSummary || {}) });
-        dashboardScopeRef.current = dashboardScopeKey;
-      }
-
-      setHasLoadedOnce(true);
+      setStatusSummary({ ...getInitialStatusSummary(), ...(res.statusSummary || {}) });
     } catch (err) {
       setErro("Não foi possível carregar as medições. Tente novamente.");
+      setStatusSummary(getInitialStatusSummary());
     } finally {
-      setInitialLoading(false);
-      setTableLoading(false);
+      setLoading(false);
     }
-  }, [reviewer, filtros, currentPage, hasLoadedOnce, dashboardScopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewer, filtros, currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { load(); }, [load]);
 
@@ -205,34 +177,17 @@ function Measurements() {
       if (openLightbox && fotoUrls[m.id]) setLightbox(fotoUrls[m.id]);
       return;
     }
-    // Suporta anexos como números (IDs) ou objetos ({ id, url, ... })
-    const firstAnexo = Array.isArray(m.anexos)
-      ? m.anexos.find((a) => typeof a === "number" || (a && typeof a === "object" && a.id))
-      : null;
-    if (!firstAnexo) {
+    const firstId = Array.isArray(m.anexos) ? m.anexos.find((id) => typeof id === "number") : null;
+    if (!firstId) {
       setFotoUrls((prev) => ({ ...prev, [m.id]: null }));
       return;
     }
-    // Se o objeto já carrega a URL, usa diretamente sem nova requisição
-    if (typeof firstAnexo === "object" && firstAnexo.url) {
-      const anexoTipo = firstAnexo.tipo || "outros";
-      const url = firstAnexo.url.startsWith("http")
-        ? firstAnexo.url
-        : firstAnexo.url.startsWith("/")
-          ? `${BASE_URL}${firstAnexo.url}`
-          : `${BASE_URL}/api/files/raw/${anexoTipo}/${firstAnexo.url}`;
-      setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
-      if (openLightbox) setLightbox(url);
-      return;
-    }
-    const firstId = typeof firstAnexo === "number" ? firstAnexo : firstAnexo.id;
     try {
       const res = await api.get(`/files/${firstId}`);
-      const url = res?.data?.data?.url || res?.data?.url || null;
+      const url = res?.data?.data?.url || null;
       setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
       if (openLightbox && url) setLightbox(url);
-    } catch (err) {
-      console.warn(`Não foi possível carregar anexo ${firstId} para medição ${m.id}:`, err.message);
+    } catch {
       setFotoUrls((prev) => ({ ...prev, [m.id]: null }));
     }
   }, [fotoUrls]);
@@ -243,7 +198,7 @@ function Measurements() {
 
     measurements.forEach((m) => {
       const directUrl = getFotoMedUrl(m);
-      const hasAnexo = Array.isArray(m.anexos) && m.anexos.some((a) => typeof a === "number" || (a && typeof a === "object" && a.id));
+      const hasAnexo = Array.isArray(m.anexos) && m.anexos.some((id) => typeof id === "number");
       if (!directUrl && hasAnexo && fotoUrls[m.id] === undefined) {
         resolveFotoUrl(m, false);
       }
@@ -272,9 +227,6 @@ function Measurements() {
 
   const temFiltroAtivo = Object.values(filtros).some(Boolean);
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_LIMIT));
-  const isTableBusy = initialLoading || tableLoading;
-  const shouldShowTableSection = hasLoadedOnce || isTableBusy;
-  const shouldShowDashboardSkeleton = initialLoading && !hasLoadedOnce;
 
   const quantidadeAprovadas = statusSummary.aprovada || 0;
   const quantidadePendentes = statusSummary.enviada || 0;
@@ -288,9 +240,9 @@ function Measurements() {
     { key: "rascunho", label: "Rascunhos", value: quantidadeRascunhos, color: "var(--cor-borda)" },
   ];
 
+  const legendItems = chartItems.filter((item) => item.value > 0);
+  const displayItems = legendItems.length > 0 ? legendItems : chartItems;
   const chartTotal = chartItems.reduce((sum, item) => sum + item.value, 0);
-  const displayedMeasurementsLabel = `${measurements.length} de ${totalItems} ${totalItems !== 1 ? "medições" : "medição"}`;
-  const skeletonRows = Array.from({ length: 9 }, (_, index) => index);
 
   const donutGradient = (() => {
     if (!chartTotal) {
@@ -312,65 +264,62 @@ function Measurements() {
 
   return (
     <Layout>
-      <div className="page-container measurements-page">
-        <div className="measurements-header-row">
-          <h1 className="page-title measurements-page-title">Medições</h1>
-          <a
-            href="/medicoes"
-            className="button-primary measurements-register-button"
-          >
-            + Registrar nova medição
-          </a>
-        </div>
-        <p className="page-description measurements-page-description">
+      <div className="page-container" style={{ maxWidth: "1200px" }}>
+        {/* ── Título e descrição — largura total para a borda ficar completa ── */}
+        <h1 className="page-title">Medições</h1>
+        <p className="page-description">
           {reviewer
             ? "Revise e aprove as medições registradas pelos encarregados."
             : "Acompanhe o status das suas medições enviadas."}
         </p>
 
-        <section className="measurement-status-overview" aria-label="Resumo de status das medições">
-          <div className={`measurement-overview-card ${shouldShowDashboardSkeleton ? "measurement-overview-card--loading" : ""}`}>
+        {/* ── Barra de ação: resumo visual de status + botão ───────────────── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--espacamento-md)", marginBottom: "var(--espacamento-lg)" }}>
+          {!loading && (
+            <section className="measurement-status-overview" aria-label="Resumo de status das medições">
+              <div className="measurement-overview-card">
                 <div className="measurement-overview-card__left">
-                  <div className="measurement-overview-card__summary">
-                    <span className="measurement-overview-card__title">Total de medições</span>
-                    <strong className="measurement-overview-card__total">{dashboardTotalItems}</strong>
-                    <p className="measurement-overview-card__subtitle">medições totais</p>
-                  </div>
+                  <span className="measurement-overview-card__title">Total de medições</span>
+                  <strong className="measurement-overview-card__total">{totalItems}</strong>
+                  <p className="measurement-overview-card__subtitle">medições totais</p>
 
-                  <div className="measurement-overview-card__metrics-grid">
-                    <article className="measurement-overview-card__metric measurement-overview-card__metric--rejeitada">
-                      <span className="measurement-overview-card__metric-label">Rejeitadas</span>
-                      <strong className="measurement-overview-card__metric-value">{quantidadeRejeitadas}</strong>
-                    </article>
-
-                    <article className="measurement-overview-card__metric measurement-overview-card__metric--aprovada">
-                      <span className="measurement-overview-card__metric-label">Aprovadas</span>
-                      <strong className="measurement-overview-card__metric-value">{quantidadeAprovadas}</strong>
-                    </article>
-
-                    <article className="measurement-overview-card__metric measurement-overview-card__metric--rascunho">
-                      <span className="measurement-overview-card__metric-label">Rascunhos</span>
-                      <strong className="measurement-overview-card__metric-value">{quantidadeRascunhos}</strong>
-                    </article>
-
-                    <article className="measurement-overview-card__metric measurement-overview-card__metric--enviada">
-                      <span className="measurement-overview-card__metric-label">Aguardando revisão</span>
-                      <strong className="measurement-overview-card__metric-value">{quantidadePendentes}</strong>
-                    </article>
-                  </div>
+                  <ul className="measurement-overview-card__legend">
+                    {displayItems.map((item) => (
+                      <li key={item.key} className={`measurement-overview-card__legend-item measurement-overview-card__legend-item--${item.key}`}>
+                        <span className="measurement-overview-card__dot" style={{ backgroundColor: item.color }} />
+                        <span className="measurement-overview-card__label">
+                          {item.value} {item.label.toLowerCase()}
+                        </span>
+                        <span className="measurement-overview-card__percent">
+                          {formatPercent(item.value, chartTotal)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
 
                 <div className="measurement-overview-card__chart-wrap" aria-hidden="true">
                   <div className="measurement-overview-card__chart" style={{ background: donutGradient }} />
                 </div>
-          </div>
-        </section>
+              </div>
+            </section>
+          )}
+
+          <a
+            href="/medicoes"
+            className="button-primary"
+            style={{ textDecoration: "none", padding: "10px 24px", whiteSpace: "nowrap", flexShrink: 0, marginLeft: "auto" }}
+          >
+            + Registrar nova medição
+          </a>
+        </div>
 
         {/* ── Painel de Filtros ─────────────────────────────────────────────── */}
         <div
-          className="form-container measurements-filter-panel"
+          className="form-container"
+          style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
         >
-          <p className="measurements-filter-title">
+          <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
             Filtros
           </p>
           <div style={{
@@ -438,11 +387,12 @@ function Measurements() {
               </div>
             )}
 
-            <div className="measurements-filter-actions">
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
               <button
-                className="button-secondary measurements-filter-clear"
+                className="button-secondary"
                 onClick={limparFiltros}
                 disabled={!temFiltroAtivo}
+                style={{ width: "100%", padding: "15px 12px" }}
               >
                 Limpar filtros
               </button>
@@ -453,97 +403,88 @@ function Measurements() {
         {/* ── Feedbacks globais ─────────────────────────────────────────────── */}
         {erro    && <p className="erro-msg">{erro}</p>}
         {sucesso && <p className="success-msg">{sucesso}</p>}
+        {loading && (
+          <p style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
+            Carregando medições...
+          </p>
+        )}
+
+        {!erro && !loading && measurements.length === 0 && (
+          <div className="card" style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
+            <p style={{ marginBottom: "var(--espacamento-md)" }}>
+              {temFiltroAtivo
+                ? "Nenhuma medição encontrada para os filtros selecionados. Tente ajustar os critérios de busca."
+                : "Nenhuma medição registrada ainda."}
+            </p>
+            {!reviewer && (
+              <a href="/medicoes" className="button-primary" style={{ textDecoration: "none" }}>
+                Registrar primeira medição
+              </a>
+            )}
+          </div>
+        )}
 
         {/* ── Tabela ───────────────────────────────────────────────────────── */}
-        {shouldShowTableSection && (
-          <section className={`measurements-list-section ${tableLoading ? "measurements-list-section--loading" : ""}`} aria-label="Lista de medições">
-            <div className="measurements-list-header">
-              {hasLoadedOnce ? (
-                <p className="measurements-list-meta">
-                  Exibindo {displayedMeasurementsLabel}
-                  {temFiltroAtivo ? " (filtros ativos)" : ""}.
-                </p>
-              ) : (
-                <div className="measurements-list-meta-skeleton" aria-hidden="true" />
-              )}
-            </div>
+        {!loading && measurements.length > 0 && (
+          <>
+            <p style={{
+              marginBottom: "var(--espacamento-md)",
+              color: "var(--cor-texto-secundario)",
+              fontSize: "var(--tamanho-fonte-pequena)",
+            }}>
+              Exibindo {measurements.length} de {totalItems} {totalItems !== 1 ? "medições" : "medição"}
+              {temFiltroAtivo ? " (filtros ativos)" : ""}.
+            </p>
 
             <div className="measurements-table-wrap">
-              {isTableBusy && (
-                <table className="measurements-table measurements-table--skeleton" aria-hidden="true">
-                  <thead>
-                    <tr>
-                      {reviewer && <th className="measurements-table__col-obra">Obra</th>}
-                      {reviewer && <th className="measurements-table__col-responsavel">Responsável</th>}
-                      <th className="measurements-table__col-item">Ambiente</th>
-                      <th className="measurements-table__col-area">Área (m²)</th>
-                      <th className="measurements-table__col-status">Status</th>
-                      <th className="measurements-table__col-photo">Foto</th>
-                      <th className="measurements-table__col-details">Detalhes</th>
-                      <th className="measurements-table__col-actions">{reviewer ? "Aprovação" : "Ações"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {skeletonRows.map((row) => (
-                      <tr key={`skeleton-row-${row}`} className="measurements-table__row">
-                        {reviewer && (
-                          <td><div className="measurements-skeleton measurements-skeleton--text" /></td>
-                        )}
-                        {reviewer && (
-                          <td><div className="measurements-skeleton measurements-skeleton--text" /></td>
-                        )}
-                        <td><div className="measurements-skeleton measurements-skeleton--text" /></td>
-                        <td><div className="measurements-skeleton measurements-skeleton--text" /></td>
-                        <td><div className="measurements-skeleton measurements-skeleton--status" /></td>
-                        <td><div className="measurements-skeleton measurements-skeleton--photo" /></td>
-                        <td><div className="measurements-skeleton measurements-skeleton--button" /></td>
-                        <td>
-                          <div className="measurements-skeleton-actions">
-                            <div className="measurements-skeleton measurements-skeleton--button" />
-                            <div className="measurements-skeleton measurements-skeleton--button" />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {!isTableBusy && hasLoadedOnce && measurements.length > 0 && (
-                <div key={`measurements-page-${currentPage}`} className="page-transition-fade">
-                  <table className="measurements-table">
-                    <thead>
-                      <tr>
-                        {reviewer && <th className="measurements-table__col-obra">Obra</th>}
-                        {reviewer && <th className="measurements-table__col-responsavel">Responsável</th>}
-                        <th className="measurements-table__col-item">Ambiente</th>
-                        <th className="measurements-table__col-area">Área (m²)</th>
-                        <th className="measurements-table__col-status">Status</th>
-                        <th className="measurements-table__col-photo">Foto</th>
-                        <th className="measurements-table__col-details">Detalhes</th>
-                        <th className="measurements-table__col-actions">{reviewer ? "Aprovação" : "Ações"}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {measurements.map((m, idx) => (
-                        <React.Fragment key={m.id || idx}>
+              <table className="measurements-table">
+                <thead>
+                  <tr>
+                    {reviewer && <th>Obra</th>}
+                    {reviewer && <th>Responsável</th>}
+                    <th>Ambiente</th>
+                    <th>Área (m²)</th>
+                    <th>Status</th>
+                    <th>Foto</th>
+                    <th>Detalhes</th>
+                    <th>{reviewer ? "Aprovação" : "Ações"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {measurements.map((m, idx) => (
+                    <React.Fragment key={m.id || idx}>
                       {/* ── Linha da medição ──────────────────────────────── */}
-                      <tr className="measurements-table__row">
+                      <tr>
                         {reviewer && (
-                          <td className="measurements-table__cell-obra">{m.obraNome || (m.obra ? `Obra #${m.obra}` : "—")}</td>
+                          <td>{m.obraNome || (m.obra ? `Obra #${m.obra}` : "—")}</td>
                         )}
                         {reviewer && (
-                          <td className="measurements-table__cell-responsavel">{m.responsavelNome || (m.responsavel ? `#${m.responsavel}` : "—")}</td>
+                          <td>{m.responsavelNome || (m.responsavel ? `#${m.responsavel}` : "—")}</td>
                         )}
-                        <td className="measurements-table__cell-item">{m.areaNome || "—"}</td>
-                        <td className="measurements-table__cell-area">
-                          <strong className="measurements-table__metric">
+                        <td>{m.areaNome || "—"}</td>
+                        <td>
+                          <strong>
                             {m.area != null && !isNaN(m.area) ? Number(m.area).toFixed(2) : "—"}
                           </strong>
                         </td>
                         <td>
                           <span
-                            className={`status-badge measurements-status-badge ${STATUS_CLASS[m.status] || "pendente"}`}
+                            className={`status-badge ${STATUS_CLASS[m.status] || "pendente"}`}
+                            style={{
+                              display: "inline-block",
+                              padding: "5px 12px",
+                              borderRadius: "20px",
+                              fontSize: "var(--tamanho-fonte-pequena)",
+                              fontWeight: 700,
+                              background: STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso-clara)"
+                                        : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo-clara)"
+                                        : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-fundo)"
+                                        : "var(--cor-aviso-clara)",
+                              color:      STATUS_CLASS[m.status] === "aprovada"  ? "var(--cor-sucesso)"
+                                        : STATUS_CLASS[m.status] === "rejeitada" ? "var(--cor-perigo)"
+                                        : STATUS_CLASS[m.status] === "rascunho"  ? "var(--cor-texto-secundario)"
+                                        : "var(--cor-aviso)",
+                            }}
                           >
                             {STATUS_LABEL[m.status] || m.status || "Aguardando revisão"}
                           </span>
@@ -552,7 +493,7 @@ function Measurements() {
                         <td className="measurements-photo-cell">
                           {(() => {
                             const directUrl = getFotoMedUrl(m);
-                            const hasAnexo  = Array.isArray(m.anexos) && m.anexos.some((a) => typeof a === "number" || (a && typeof a === "object" && a.id));
+                            const hasAnexo  = Array.isArray(m.anexos) && m.anexos.some((id) => typeof id === "number");
                             if (!directUrl && !hasAnexo) {
                               return <span className="measurements-photo-empty">—</span>;
                             }
@@ -577,21 +518,23 @@ function Measurements() {
 
                         <td className="measurements-details-cell">
                           <button
-                            className="button-secondary measurements-table-button"
+                            className="button-secondary"
                             onClick={() => toggleExpandedMeasurement(m.id)}
+                            style={{ padding: "8px 12px" }}
                           >
                             {expandedMeasurementId === m.id ? "Ocultar" : "Ver detalhes"}
                           </button>
                         </td>
 
                         <td className="measurements-actions-cell">
-                          <div className="measurements-actions-group">
+                          <div style={{ display: "flex", gap: "var(--espacamento-xs)", flexWrap: "wrap" }}>
                             {/* Botão Editar — para encarregado em rascunho/rejeitada */}
                             {(m.status === "rascunho" || m.status === "rejeitada") && !reviewer && (
                               <button
-                                className="button-secondary measurements-table-button"
+                                className="button-secondary"
                                 onClick={() => navigate(`/medicoes?editar=${m.id}`)}
                                 disabled={actionLoadingId === m.id}
+                                style={{ padding: "8px 14px" }}
                               >
                                 Editar
                               </button>
@@ -600,26 +543,28 @@ function Measurements() {
                             {reviewer && (
                               <div className="measurement-approval-actions">
                                 <button
-                                  className="button-success measurements-table-button"
+                                  className="button-success"
                                   disabled={
                                     actionLoadingId === m.id
                                     || m.status === "aprovada"
                                     || (inlineAction !== null && inlineAction.id !== m.id)
                                   }
                                   onClick={() => handleApproveClick(m.id)}
+                                  style={{ padding: "8px 14px" }}
                                 >
                                   {inlineAction?.type === "approve" && inlineAction.id === m.id
                                     ? "Confirmando..."
                                     : "Aprovar"}
                                 </button>
                                 <button
-                                  className="button-danger measurements-table-button"
+                                  className="button-danger"
                                   disabled={
                                     actionLoadingId === m.id
                                     || m.status === "rejeitada"
                                     || (inlineAction !== null && inlineAction.id !== m.id)
                                   }
                                   onClick={() => handleRejectClick(m.id)}
+                                  style={{ padding: "8px 14px" }}
                                 >
                                   Rejeitar
                                 </button>
@@ -636,54 +581,40 @@ function Measurements() {
                       {expandedMeasurementId === m.id && (
                         <tr className="measurement-details-row">
                           <td colSpan={reviewer ? 8 : 6}>
-                            <div className="measurement-details-card">
-                              <div className="measurement-details-grid">
-                                <div>
-                                  <p className="measurement-details-label">Obra</p>
-                                  <p className="measurement-details-value">
-                                    {m.obraNome || (m.obra ? `Obra #${m.obra}` : "—")}
-                                  </p>
-                                </div>
-
-                                <div>
-                                  <p className="measurement-details-label">Item</p>
-                                  <p className="measurement-details-value">{m.areaNome || "—"}</p>
-                                </div>
-
-                                <div>
+                            <div className="measurement-details-grid">
+                              <div>
                                 <p className="measurement-details-label">Tipo de serviço</p>
                                 <p className="measurement-details-value">
                                   {TIPOS_SERVICO.find((t) => t.value === m.tipoServico)?.label
                                     || m.tipoServico
                                     || "—"}
                                 </p>
-                                </div>
+                              </div>
 
-                                <div>
-                                  <p className="measurement-details-label">Data de registro</p>
-                                  <p className="measurement-details-value">
-                                    {m.createdAt
-                                      ? new Date(m.createdAt).toLocaleDateString("pt-BR")
-                                      : "—"}
-                                  </p>
-                                </div>
+                              <div>
+                                <p className="measurement-details-label">Data de registro</p>
+                                <p className="measurement-details-value">
+                                  {m.createdAt
+                                    ? new Date(m.createdAt).toLocaleDateString("pt-BR")
+                                    : "—"}
+                                </p>
+                              </div>
 
-                                <div className="measurement-details-grid__full">
-                                  <p className="measurement-details-label">Observações</p>
-                                  <p className="measurement-details-value">{m.observacoes || "Sem observações."}</p>
-                                </div>
+                              <div style={{ gridColumn: "1 / -1" }}>
+                                <p className="measurement-details-label">Observações</p>
+                                <p className="measurement-details-value">{m.observacoes || "Sem observações."}</p>
+                              </div>
 
-                                {m.status === "rejeitada" && m.motivoRejeicao && (
-                                  <div className="measurement-details-grid__full">
-                                    <p className="measurement-details-label">Motivo da rejeição</p>
-                                    <p className="measurement-details-value measurement-details-value--danger">{m.motivoRejeicao}</p>
-                                  </div>
-                                )}
-
-                                <div className="measurement-details-grid__full">
-                                  <p className="measurement-details-label">Foto</p>
-                                  <p className="measurement-details-value">Use a miniatura da coluna “Foto” para ampliar a imagem.</p>
+                              {m.status === "rejeitada" && m.motivoRejeicao && (
+                                <div style={{ gridColumn: "1 / -1" }}>
+                                  <p className="measurement-details-label">Motivo da rejeição</p>
+                                  <p className="measurement-details-value measurement-details-value--danger">{m.motivoRejeicao}</p>
                                 </div>
+                              )}
+
+                              <div style={{ gridColumn: "1 / -1" }}>
+                                <p className="measurement-details-label">Foto</p>
+                                <p className="measurement-details-value">Use a miniatura da coluna “Foto” para ampliar a imagem.</p>
                               </div>
                             </div>
                           </td>
@@ -692,33 +623,35 @@ function Measurements() {
 
                       {/* ── Linha expandida de confirmação (próxima ao contexto) ─── */}
                       {inlineAction !== null && inlineAction.id === m.id && (
-                        <tr className={`measurement-inline-row measurement-inline-row--${inlineAction.type}`}>
-                          <td colSpan={reviewer ? 8 : 6}>
+                        <tr style={{ background: inlineAction.type === "reject" ? "#fef2f2" : "#f0fdf4" }}>
+                          <td colSpan={reviewer ? 8 : 6} style={{ padding: "var(--espacamento-md)" }}>
                             {inlineAction.type === "approve" ? (
-                              <div className="measurement-inline-card measurement-inline-card--approve">
-                                <span className="measurement-inline-card__title measurement-inline-card__title--approve">
+                              <div style={{ display: "flex", alignItems: "center", gap: "var(--espacamento-md)", flexWrap: "wrap" }}>
+                                <span style={{ fontWeight: 600, color: "var(--cor-sucesso)" }}>
                                   Confirmar aprovação desta medição?
                                 </span>
                                 <button
-                                  className="button-success measurements-table-button"
+                                  className="button-success"
                                   onClick={() => confirmApprove(m.id)}
                                   disabled={actionLoadingId === m.id}
+                                  style={{ padding: "8px 18px" }}
                                 >
                                   {actionLoadingId === m.id ? "Aprovando..." : "Sim, aprovar"}
                                 </button>
                                 <button
-                                  className="button-secondary measurements-table-button"
+                                  className="button-secondary"
                                   onClick={cancelInlineAction}
                                   disabled={actionLoadingId === m.id}
+                                  style={{ padding: "8px 18px" }}
                                 >
                                   Cancelar
                                 </button>
                               </div>
                             ) : (
-                              <div className="measurement-inline-card measurement-inline-card--reject">
+                              <div>
                                 <label
                                   htmlFor={`motivo-rejeicao-${m.id}`}
-                                  className="measurement-inline-card__title measurement-inline-card__title--reject"
+                                  style={{ fontWeight: 600, color: "var(--cor-perigo)", display: "block", marginBottom: "var(--espacamento-xs)" }}
                                 >
                                   Informe o motivo da rejeição (opcional):
                                 </label>
@@ -728,20 +661,22 @@ function Measurements() {
                                   onChange={(e) => setMotivoRejeicao(e.target.value)}
                                   placeholder="Ex: Medição incompleta, dimensões inconsistentes com o projeto..."
                                   rows={2}
-                                  className="measurement-inline-card__textarea"
+                                  style={{ width: "100%", maxWidth: "500px", marginBottom: "var(--espacamento-xs)" }}
                                 />
-                                <div className="measurement-inline-card__actions">
+                                <div style={{ display: "flex", gap: "var(--espacamento-xs)" }}>
                                   <button
-                                    className="button-danger measurements-table-button"
+                                    className="button-danger"
                                     onClick={() => confirmReject(m.id)}
                                     disabled={actionLoadingId === m.id}
+                                    style={{ padding: "8px 18px" }}
                                   >
                                     {actionLoadingId === m.id ? "Rejeitando..." : "Confirmar rejeição"}
                                   </button>
                                   <button
-                                    className="button-secondary measurements-table-button"
+                                    className="button-secondary"
                                     onClick={cancelInlineAction}
                                     disabled={actionLoadingId === m.id}
+                                    style={{ padding: "8px 18px" }}
                                   >
                                     Cancelar
                                   </button>
@@ -751,41 +686,43 @@ function Measurements() {
                           </td>
                         </tr>
                       )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {hasLoadedOnce && !isTableBusy && measurements.length === 0 && !erro && (
-                <div className="card measurements-empty-state measurements-empty-state--table">
-                  <p className="measurements-empty-state__text">
-                    {temFiltroAtivo
-                      ? "Nenhuma medição encontrada para os filtros selecionados. Tente ajustar os critérios de busca."
-                      : "Nenhuma medição registrada ainda."}
-                  </p>
-                  {!reviewer && (
-                    <a href="/medicoes" className="button-primary measurements-empty-state__action">
-                      Registrar primeira medição
-                    </a>
-                  )}
-                </div>
-              )}
-
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             {/* ── Controles de Paginação ────────────────────────────────── */}
-            {hasLoadedOnce && measurements.length > 0 && totalPages > 1 && (
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                loading={isTableBusy}
-                onChangePage={setCurrentPage}
-                className="measurements-pagination"
-              />
+            {totalPages > 1 && (
+              <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "var(--espacamento-md)",
+                marginTop: "var(--espacamento-xl)",
+              }}>
+                <button
+                  className="button-secondary"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1 || loading}
+                  style={{ padding: "8px 18px" }}
+                >
+                  ← Anterior
+                </button>
+                <span style={{ fontSize: "var(--tamanho-fonte-base)", color: "var(--cor-texto-secundario)" }}>
+                  Página {currentPage} de {totalPages}
+                </span>
+                <button
+                  className="button-secondary"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages || loading}
+                  style={{ padding: "8px 18px" }}
+                >
+                  Próxima →
+                </button>
+              </div>
             )}
-          </section>
+          </>
         )}
       </div>
 
@@ -800,22 +737,43 @@ function Measurements() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="measurements-lightbox"
+            style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
             <button
               onClick={() => setLightbox(null)}
               aria-label="Fechar"
-              className="measurements-lightbox__close"
+              style={{
+                position: "absolute",
+                top: "-14px",
+                right: "-14px",
+                background: "white",
+                border: "none",
+                borderRadius: "50%",
+                width: "36px",
+                height: "36px",
+                fontSize: "22px",
+                lineHeight: 1,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                zIndex: 1,
+              }}
             >
               ×
             </button>
-            <div className="measurements-lightbox__viewport">
-              <img
-                src={lightbox}
-                alt="Foto da medição ampliada"
-                className="measurements-lightbox__image"
-              />
-            </div>
+            <img
+              src={lightbox}
+              alt="Foto da medição ampliada"
+              style={{
+                maxWidth: "90vw",
+                maxHeight: "85vh",
+                borderRadius: "8px",
+                objectFit: "contain",
+                boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+              }}
+            />
           </div>
         </div>
       )}

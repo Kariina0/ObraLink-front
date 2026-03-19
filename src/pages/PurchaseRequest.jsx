@@ -1,16 +1,11 @@
 // src/pages/PurchaseRequest.jsx
-import { useContext, useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "../components/Layout";
-import { AuthContext } from "../context/AuthContext";
 import { createPurchase } from "../services/purchasesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
 import { enqueueSyncOperation } from "../utils/syncQueue";
 import "../styles/pages.css";
-
-function getTodayInputDate() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const CATEGORIAS = [
   {
@@ -276,7 +271,6 @@ const PRIORIDADES = [
 ];
 
 export default function PurchaseRequest() {
-  const { user } = useContext(AuthContext);
   const { obras, loadingObras } = useObras(100);
   const [obraId, setObraId] = useState("");
   const [categoriaAberta, setCategoriaAberta] = useState(null);
@@ -286,8 +280,6 @@ export default function PurchaseRequest() {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [sucesso, setSucesso] = useState(false);
-  const nomeResponsavel = user?.nome || "Usuário autenticado";
-  const dataSolicitacao = getTodayInputDate();
 
   useEffect(() => {
     const onSyncCompleted = (event) => {
@@ -393,7 +385,7 @@ export default function PurchaseRequest() {
     <Layout>
       <div className="page-container">
         <h1 className="page-title">Solicitar Materiais</h1>
-        <p className="page-description">
+        <p style={{ fontSize: "var(--tamanho-fonte-grande)", color: "var(--cor-texto-secundario)", marginBottom: "var(--espacamento-xl)", lineHeight: "1.6" }}>
           Selecione os materiais necessários para a obra. Clique em uma categoria para expandir e marcar os itens desejados.
         </p>
 
@@ -403,235 +395,190 @@ export default function PurchaseRequest() {
           </p>
         )}
 
-        <form onSubmit={handleSubmit} className="form-container medicao-form-container purchase-request-form">
-            <div className="medicao-topo-grid" aria-label="Informações da solicitação">
-              <div className="form-group medicao-topo-grid__responsavel">
-                <label htmlFor="responsavelSolicitacao">Responsável pela Solicitação</label>
-                <input
-                  id="responsavelSolicitacao"
-                  type="text"
-                  value={nomeResponsavel}
-                  readOnly
-                  tabIndex={-1}
-                  className="medicao-readonly-input purchase-request-readonly-input"
-                  aria-readonly="true"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="form-container">
 
-              <div className="form-group medicao-topo-grid__data">
-                <label htmlFor="dataSolicitacao">Data da Solicitação</label>
-                <input
-                  id="dataSolicitacao"
-                  type="date"
-                  value={dataSolicitacao}
-                  readOnly
-                  tabIndex={-1}
-                  className="medicao-readonly-input purchase-request-readonly-input"
-                  aria-readonly="true"
-                />
-              </div>
-            </div>
-
-            <section className="purchase-request-section" aria-labelledby="purchase-request-info-title">
-              <h2 id="purchase-request-info-title" className="section-title purchase-request-section-title">
-                Informações da Solicitação
-              </h2>
-
-              <div className="purchase-request-info-grid">
-                <div className="form-group">
-                  <label htmlFor="obra-select">Obra *</label>
-                  {loadingObras ? (
-                    <select id="obra-select" disabled>
-                      <option>Carregando obras...</option>
-                    </select>
-                  ) : obras.length === 0 ? (
-                    <p className="erro-msg" style={{ marginTop: "4px" }}>
-                      Nenhuma obra disponível. Entre em contato com o administrador.
-                    </p>
-                  ) : (
-                    <select
-                      id="obra-select"
-                      value={obraId}
-                      onChange={(e) => setObraId(e.target.value)}
-                      required
-                    >
-                      {obras.length > 1 && <option value="">Selecione a obra</option>}
-                      {obras.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.nome || `Obra #${o.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="prioridade">Prioridade *</label>
-                  <select
-                    id="prioridade"
-                    value={prioridade}
-                    onChange={(e) => setPrioridade(e.target.value)}
-                  >
-                    {PRIORIDADES.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </section>
-
-            <section className="purchase-request-section" aria-labelledby="purchase-request-materials-title">
-              <div className="purchase-request-section-header">
-                <h2 id="purchase-request-materials-title" className="section-title purchase-request-section-title">
-                  Materiais Necessários
-                </h2>
-                {totalSelecionados > 0 && (
-                  <button
-                    type="button"
-                    onClick={limparSelecao}
-                    className="purchase-request-clear-button"
-                  >
-                    Limpar seleção ({totalSelecionados})
-                  </button>
-                )}
-              </div>
-
-              <div className="materiais-lista">
-                {CATEGORIAS.map((cat, idx) => {
-                  const selecionados = cat.itens.filter((i) => itensSelecionados.includes(i)).length;
-                  const todosMarcados = cat.itens.every((i) => itensSelecionados.includes(i));
-                  const aberta = categoriaAberta === idx;
-
-                  return (
-                    <div key={cat.nome} className="materiais-categoria">
-                      <button
-                        type="button"
-                        className="materiais-categoria-header"
-                        aria-expanded={aberta}
-                        onClick={() => toggleCategoria(idx)}
-                      >
-                        <span className="materiais-categoria-nome">{cat.nome}</span>
-                        <div className="purchase-request-category-meta">
-                          {selecionados > 0 && (
-                            <span className="badge">{selecionados}/{cat.itens.length}</span>
-                          )}
-                          <span className="topico-chevron">{aberta ? "▲" : "▼"}</span>
-                        </div>
-                      </button>
-
-                      {aberta && (
-                        <div className="materiais-corpo">
-                          <div className="materiais-acoes">
-                            <button
-                              type="button"
-                              className="materiais-marcar-btn"
-                              onClick={() => {
-                                if (todosMarcados) {
-                                  setItensSelecionados((prev) => prev.filter((i) => !cat.itens.includes(i)));
-                                } else {
-                                  setItensSelecionados((prev) => [
-                                    ...prev,
-                                    ...cat.itens.filter((i) => !prev.includes(i)),
-                                  ]);
-                                }
-                              }}
-                            >
-                              {todosMarcados ? "Desmarcar todos" : "Marcar todos"}
-                            </button>
-                            <span className="purchase-request-category-count">
-                              {selecionados} de {cat.itens.length} selecionados
-                            </span>
-                          </div>
-                          <ul className="materiais-itens">
-                            {cat.itens.map((item) => {
-                              const marcado = itensSelecionados.includes(item);
-
-                              return (
-                                <li key={item} className="materiais-item">
-                                  <label className={"materiais-item-label" + (marcado ? " marcado" : "") }>
-                                    <input
-                                      type="checkbox"
-                                      checked={marcado}
-                                      onChange={() => toggleItem(item)}
-                                    />
-                                    {item}
-                                  </label>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="purchase-request-section" aria-labelledby="purchase-request-selected-title">
-              <h2 id="purchase-request-selected-title" className="section-title purchase-request-section-title">
-                Itens Selecionados
-              </h2>
-
-              <div className="summary purchase-request-selected-card">
-                <h3 className="purchase-request-selected-count">
-                  {totalSelecionados > 0
-                    ? `${totalSelecionados} ${totalSelecionados === 1 ? "item selecionado" : "itens selecionados"}`
-                    : "Nenhum item selecionado até o momento"}
-                </h3>
-
-                {totalSelecionados > 0 ? (
-                  <div className="purchase-request-chip-list">
-                    {itensSelecionados.map((item) => (
-                      <span key={item} className="purchase-request-chip">
-                        {item}
-                        <button
-                          type="button"
-                          onClick={() => toggleItem(item)}
-                          aria-label={`Remover ${item}`}
-                          className="purchase-request-chip-remove"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="purchase-request-empty-state">
-                    Os materiais marcados nas categorias aparecerão aqui.
-                  </p>
-                )}
-              </div>
-            </section>
-
-            <section className="purchase-request-section" aria-labelledby="purchase-request-notes-title">
-              <h2 id="purchase-request-notes-title" className="section-title purchase-request-section-title">
-                Justificativa / observações (opcional)
-              </h2>
-
-              <div className="form-group purchase-request-notes-group">
-                <textarea
-                  id="descricao"
-                  rows={4}
-                  value={descricao}
-                  onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Ex: uso na concretagem da fundação."
-                  aria-labelledby="purchase-request-notes-title"
-                />
-              </div>
-            </section>
-
-            {erro && <p className="erro-msg">{erro}</p>}
-
-            <div className="medicao-actions purchase-request-actions">
-              <button
-                type="submit"
-                className="button-primary medicao-actions__primary"
-                disabled={loading || loadingObras || obras.length === 0}
+          {/* Obra */}
+          <div className="form-group">
+            <label htmlFor="obra-select">Obra *</label>
+            {loadingObras ? (
+              <select id="obra-select" disabled>
+                <option>Carregando obras...</option>
+              </select>
+            ) : obras.length === 0 ? (
+              <p className="erro-msg" style={{ marginTop: "4px" }}>
+                Nenhuma obra disponível. Entre em contato com o administrador.
+              </p>
+            ) : (
+              <select
+                id="obra-select"
+                value={obraId}
+                onChange={(e) => setObraId(e.target.value)}
+                required
               >
-                {loading ? "Enviando solicitação..." : "Enviar Solicitação"}
-              </button>
+                {obras.length > 1 && <option value="">Selecione a obra</option>}
+                {obras.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nome || `Obra #${o.id}`}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Prioridade */}
+          <div className="form-group">
+            <label htmlFor="prioridade">Prioridade *</label>
+            <select
+              id="prioridade"
+              value={prioridade}
+              onChange={(e) => setPrioridade(e.target.value)}
+            >
+              {PRIORIDADES.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Selecao de materiais */}
+          <div className="form-group">
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--espacamento-sm)" }}>
+              <label style={{ margin: 0 }}>Materiais necessarios *</label>
+              {totalSelecionados > 0 && (
+                <button
+                  type="button"
+                  onClick={limparSelecao}
+                  style={{ background: "none", border: "none", color: "var(--cor-perigo)", cursor: "pointer", fontSize: "var(--tamanho-fonte-pequena)", fontWeight: 600, padding: "2px 6px" }}
+                >
+                  Limpar selecao ({totalSelecionados})
+                </button>
+              )}
             </div>
+
+            <div className="materiais-lista">
+              {CATEGORIAS.map((cat, idx) => {
+                const selecionados = cat.itens.filter((i) => itensSelecionados.includes(i)).length;
+                const todosMarcados = cat.itens.every((i) => itensSelecionados.includes(i));
+                const aberta = categoriaAberta === idx;
+                return (
+                  <div key={cat.nome} className="materiais-categoria">
+                    <button
+                      type="button"
+                      className="materiais-categoria-header"
+                      aria-expanded={aberta}
+                      onClick={() => toggleCategoria(idx)}
+                    >
+                      <span className="materiais-categoria-nome">{cat.nome}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "var(--espacamento-sm)" }}>
+                        {selecionados > 0 && (
+                          <span className="badge">{selecionados}/{cat.itens.length}</span>
+                        )}
+                        <span className="topico-chevron">{aberta ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+
+                    {aberta && (
+                      <div className="materiais-corpo">
+                        <div className="materiais-acoes">
+                          <button
+                            type="button"
+                            className="materiais-marcar-btn"
+                            onClick={() => {
+                              if (todosMarcados) {
+                                setItensSelecionados((prev) => prev.filter((i) => !cat.itens.includes(i)));
+                              } else {
+                                setItensSelecionados((prev) => [...prev, ...cat.itens.filter((i) => !prev.includes(i))]);
+                              }
+                            }}
+                          >
+                            {todosMarcados ? "Desmarcar todos" : "Marcar todos"}
+                          </button>
+                          <span style={{ fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)" }}>
+                            {selecionados} de {cat.itens.length} selecionados
+                          </span>
+                        </div>
+                        <ul className="materiais-itens">
+                          {cat.itens.map((item) => {
+                            const marcado = itensSelecionados.includes(item);
+                            return (
+                              <li key={item} className="materiais-item">
+                                <label className={"materiais-item-label" + (marcado ? " marcado" : "")}>
+                                  <input
+                                    type="checkbox"
+                                    checked={marcado}
+                                    onChange={() => toggleItem(item)}
+                                  />
+                                  {item}
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Resumo dos itens selecionados */}
+          {totalSelecionados > 0 && (
+            <div className="summary">
+              <h3 style={{ marginTop: 0, marginBottom: "var(--espacamento-sm)", fontSize: "var(--tamanho-fonte-base)", color: "var(--cor-texto-principal)" }}>
+                {totalSelecionados} item(ns) selecionado(s)
+              </h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {itensSelecionados.map((item) => (
+                  <span
+                    key={item}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      background: "var(--cor-primaria)",
+                      color: "#fff",
+                      borderRadius: "99px",
+                      padding: "3px 10px",
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {item}
+                    <button
+                      type="button"
+                      onClick={() => toggleItem(item)}
+                      aria-label={`Remover ${item}`}
+                      style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: "0.95rem" }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Justificativa */}
+          <div className="form-group">
+            <label htmlFor="descricao">Justificativa / observações (opcional)</label>
+            <textarea
+              id="descricao"
+              rows={3}
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              placeholder="Ex: Materiais necessários para segunda etapa da fundação, previsão de uso na semana 12."
+            />
+          </div>
+
+          {erro && <p className="erro-msg">{erro}</p>}
+
+          <button
+            type="submit"
+            className="button-primary"
+            disabled={loading || loadingObras || obras.length === 0}
+          >
+            {loading ? "Enviando solicitação..." : "Enviar Solicitação"}
+          </button>
         </form>
       </div>
     </Layout>

@@ -14,20 +14,17 @@ import {
 import { listUsers } from "../services/usersService";
 import { TIPOS_SERVICO, getTipoServicoLabel, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao";
 import { normalizeMedicao } from "../utils/normalizeMedicao";
+import { resolveImageUrl } from "../utils/resolveImageUrl";
 import useObras from "../hooks/useObras";
 import { PAGE_LIMIT_RELATORIOS } from "../constants/pagination";
 import api from "../services/api";
 import "../styles/pages.css";
 
-const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
-
 // Resolve URL de arquivo (relativa ou absoluta)
 function getFotoUrl(m) {
   const caminho = m.foto || m.fotoUrl || m.arquivo || m.arquivoUrl;
   const source = caminho || m.resolvedFotoUrl;
-  if (!source) return null;
-  if (source.startsWith("http")) return source;
-  return `${BASE_URL}${source.startsWith("/") ? "" : "/"}${source}`;
+  return resolveImageUrl(source);
 }
 
 function getInitialSummary() {
