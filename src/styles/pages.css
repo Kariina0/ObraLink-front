@@ -2443,7 +2443,7 @@
   box-sizing: border-box;
 }
 
-.status-solicitacao-status-badge {
+.card .status-solicitacao-status-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2459,6 +2459,7 @@
   letter-spacing: 0.03em;
   margin-bottom: 0;
   text-transform: uppercase;
+  vertical-align: middle;
 }
 
 .status-solicitacao-top-right .status-solicitacao-status-badge {
