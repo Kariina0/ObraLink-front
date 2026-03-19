@@ -5,7 +5,13 @@
 import { useState, useEffect, useRef, useMemo, useContext } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { createMedicao, getMedicaoById, updateMedicao } from "../services/medicoesService";
+import {
+  createMedicao,
+  deleteMedicao,
+  getMedicaoById,
+  listDrafts,
+  updateMedicao,
+} from "../services/medicoesService";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
@@ -43,6 +49,25 @@ function getTodayInputDate() {
   return formatDateToInput(new Date());
 }
 
+function mapMedicaoToForm(medicao) {
+  return {
+    obra: medicao?.obra != null ? String(medicao.obra) : "",
+    area: medicao?.area || medicao?.areaNome || "",
+    tipoServico: medicao?.tipoServico || "",
+    dataMedicao: formatDateToInput(medicao?.data) || getTodayInputDate(),
+    comprimento: medicao?.comprimento != null ? String(medicao.comprimento) : "",
+    largura: medicao?.largura != null ? String(medicao.largura) : "",
+    altura: medicao?.altura != null ? String(medicao.altura) : "",
+    quantidade:
+      medicao?.quantidade != null
+        ? String(medicao.quantidade)
+        : medicao?.itens?.[0]?.quantidade != null
+          ? String(medicao.itens[0].quantidade)
+          : "",
+    observacoes: medicao?.observacoes || "",
+  };
+}
+
 const FORM_INITIAL = {
   obra: "",
   area: "",
@@ -63,6 +88,10 @@ function EnviarMedicao() {
   const modoEdicao = editarId !== null && editarId > 0;
 
   const [form, setForm] = useState(FORM_INITIAL);
+  const [rascunhos, setRascunhos] = useState([]);
+  const [loadingRascunhos, setLoadingRascunhos] = useState(false);
+  const [mostraRascunhos, setMostraRascunhos] = useState(false);
+  const [rascunhoAtivoId, setRascunhoAtivoId] = useState(null);
 
   const [foto, setFoto] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -118,6 +147,43 @@ function EnviarMedicao() {
     });
   }
 
+  async function carregarRascunhos() {
+    try {
+      setLoadingRascunhos(true);
+      const data = await listDrafts({ page: 1, limit: 20 });
+      setRascunhos(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError("Não foi possível carregar os rascunhos. " + extractApiMessage(err));
+    } finally {
+      setLoadingRascunhos(false);
+    }
+  }
+
+  function carregarRascunho(rascunho) {
+    setForm(mapMedicaoToForm(rascunho));
+    setRascunhoAtivoId(rascunho.id || null);
+    setFoto(null);
+    if (preview) {
+      URL.revokeObjectURL(preview);
+      setPreview(null);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    showToast("Rascunho carregado. Continue a edição normalmente.");
+  }
+
+  async function excluirRascunho(id) {
+    try {
+      await deleteMedicao(id);
+      if (Number(rascunhoAtivoId) === Number(id)) {
+        setRascunhoAtivoId(null);
+      }
+      await carregarRascunhos();
+      showToast("Rascunho excluído com sucesso.");
+    } catch (err) {
+      setError("Não foi possível excluir o rascunho. " + extractApiMessage(err));
+    }
+  }
+
   function processSelectedFile(file) {
     if (!file) return;
 
@@ -141,6 +207,11 @@ function EnviarMedicao() {
     return () => window.removeEventListener("sync:completed", onSyncCompleted);
   }, []);
 
+  useEffect(() => {
+    if (modoEdicao) return;
+    carregarRascunhos();
+  }, [modoEdicao]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Carrega a medição existente ao abrir em modo de edição
   useEffect(() => {
     if (!modoEdicao) return;
@@ -151,19 +222,8 @@ function EnviarMedicao() {
         setLoadingEdicao(true);
         const m = await getMedicaoById(editarId);
         if (cancelled) return;
-        setForm({
-          obra:         m.obra != null ? String(m.obra) : "",
-          area:         m.area         || m.areaNome     || "",
-          tipoServico:  m.tipoServico   || "",
-          dataMedicao:  formatDateToInput(m.data) || getTodayInputDate(),
-          comprimento:  m.comprimento   != null ? String(m.comprimento)  : "",
-          largura:      m.largura       != null ? String(m.largura)      : "",
-          altura:       m.altura        != null ? String(m.altura)       : "",
-          quantidade:   m.quantidade    != null
-            ? String(m.quantidade)
-            : (m.itens?.[0]?.quantidade != null ? String(m.itens[0].quantidade) : ""),
-          observacoes:  m.observacoes   || "",
-        });
+        setForm(mapMedicaoToForm(m));
+        setRascunhoAtivoId(m.status === "rascunho" ? m.id : null);
       } catch (err) {
         if (!cancelled) {
           setError("Não foi possível carregar a medição para edição. " + extractApiMessage(err));
@@ -282,6 +342,8 @@ function EnviarMedicao() {
   async function handleSubmit(mode = "enviada") {
     if (loadingMode) return;
 
+    const isDraftMode = mode === "rascunho";
+
     setError("");
     setToast(null);
 
@@ -290,11 +352,11 @@ function EnviarMedicao() {
       setError("Selecione uma obra para registrar a medição.");
       return;
     }
-    if (!form.area) {
+    if (!isDraftMode && !form.area) {
       setError("Selecione a área (ambiente) da medição.");
       return;
     }
-    if (!form.tipoServico) {
+    if (!isDraftMode && !form.tipoServico) {
       setError("Selecione o tipo de serviço realizado.");
       return;
     }
@@ -309,12 +371,12 @@ function EnviarMedicao() {
       return;
     }
 
-    if (usaQuantidadeDireta) {
+    if (!isDraftMode && usaQuantidadeDireta) {
       if (quantidadeDireta <= 0) {
         setError("Informe a quantidade executada.");
         return;
       }
-    } else {
+    } else if (!isDraftMode) {
       if (usaComprimento && comprimento <= 0) {
         setError("Informe um comprimento maior que zero.");
         return;
@@ -329,7 +391,7 @@ function EnviarMedicao() {
       }
     }
 
-    if (quantidadeCalculada <= 0) {
+    if (!isDraftMode && quantidadeCalculada <= 0) {
       setError("Não foi possível calcular a medição com os dados informados.");
       return;
     }
@@ -394,13 +456,18 @@ function EnviarMedicao() {
 
       if (!navigator.onLine) {
         await enqueueSyncOperation("medicao", fullBody);
+      } else if (rascunhoAtivoId) {
+        await updateMedicao(rascunhoAtivoId, fullBody);
       } else if (modoEdicao) {
         await updateMedicao(editarId, fullBody);
       } else {
         await createMedicao(fullBody);
       }
 
-      const acaoLabel = modoEdicao
+      const emRascunhoCarregado = !modoEdicao && rascunhoAtivoId;
+      const acaoLabel = emRascunhoCarregado
+        ? (mode === "rascunho" ? "Rascunho atualizado" : "Medição enviada")
+        : modoEdicao
         ? (mode === "rascunho" ? "Rascunho atualizado" : "Medição atualizada")
         : (mode === "rascunho" ? "Rascunho salvo"      : "Medição enviada");
 
@@ -428,6 +495,8 @@ function EnviarMedicao() {
         });
         setFoto(null);
         setPreview(null);
+        setRascunhoAtivoId(null);
+        await carregarRascunhos();
       }
     } catch (err) {
       const status = err?.response?.status;
@@ -504,6 +573,99 @@ function EnviarMedicao() {
           }}
           className="form-container medicao-form-container"
         >
+          {!modoEdicao && (
+            <section
+              style={{
+                marginBottom: "var(--espacamento-lg)",
+                padding: "var(--espacamento-lg)",
+                border: "1px solid var(--cor-borda)",
+                borderRadius: "var(--borda-radius)",
+                background: "var(--cor-fundo)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--espacamento-sm)", marginBottom: mostraRascunhos ? "var(--espacamento-md)" : 0 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "var(--tamanho-fonte-grande)" }}>Carregar rascunho</h2>
+                  <p style={{ margin: "4px 0 0 0", color: "var(--cor-texto-secundario)" }}>
+                    Seus rascunhos ficam visíveis apenas para você.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  onClick={async () => {
+                    const next = !mostraRascunhos;
+                    setMostraRascunhos(next);
+                    if (next && rascunhos.length === 0 && !loadingRascunhos) {
+                      await carregarRascunhos();
+                    }
+                  }}
+                >
+                  {mostraRascunhos ? "Ocultar rascunhos" : "Ver rascunhos"}
+                </button>
+              </div>
+
+              {mostraRascunhos && (
+                <div>
+                  {loadingRascunhos ? (
+                    <p style={{ margin: 0 }}>Carregando rascunhos...</p>
+                  ) : rascunhos.length === 0 ? (
+                    <p style={{ margin: 0, color: "var(--cor-texto-secundario)" }}>
+                      Nenhum rascunho salvo até o momento.
+                    </p>
+                  ) : (
+                    <div style={{ display: "grid", gap: "var(--espacamento-sm)" }}>
+                      {rascunhos.map((rascunho) => (
+                        <div
+                          key={rascunho.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "var(--espacamento-md)",
+                            padding: "var(--espacamento-md)",
+                            border: "1px solid var(--cor-borda)",
+                            borderRadius: "var(--borda-radius)",
+                            background: Number(rascunhoAtivoId) === Number(rascunho.id)
+                              ? "var(--cor-fundo-secundario)"
+                              : "var(--cor-card)",
+                          }}
+                        >
+                          <div>
+                            <strong>
+                              {mapaTipos[rascunho.tipoServico] || "Serviço sem tipo"}
+                            </strong>
+                            <p style={{ margin: "4px 0 0 0", color: "var(--cor-texto-secundario)" }}>
+                              {mapaAreas[rascunho.area] || rascunho.area || "Área não informada"}
+                              {rascunho.data ? ` • ${new Date(rascunho.data).toLocaleDateString("pt-BR")}` : ""}
+                            </p>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              className="button-primary"
+                              onClick={() => carregarRascunho(rascunho)}
+                            >
+                              Carregar
+                            </button>
+                            <button
+                              type="button"
+                              className="button-secondary"
+                              onClick={() => excluirRascunho(rascunho.id)}
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           <div className="medicao-topo-grid" aria-label="Informações da medição">
             <div className="form-group medicao-topo-grid__responsavel">
               <label htmlFor="responsavelMedicao">Responsável pela Medição</label>

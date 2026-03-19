@@ -44,7 +44,6 @@ function getInitialStatusSummary() {
     enviada: 0,
     aprovada: 0,
     rejeitada: 0,
-    rascunho: 0,
   };
 }
 
@@ -279,13 +278,10 @@ function Measurements() {
   const quantidadeAprovadas = statusSummary.aprovada || 0;
   const quantidadePendentes = statusSummary.enviada || 0;
   const quantidadeRejeitadas = statusSummary.rejeitada || 0;
-  const quantidadeRascunhos = statusSummary.rascunho || 0;
-
   const chartItems = [
     { key: "aprovada", label: "Aprovadas", value: quantidadeAprovadas, color: "var(--cor-sucesso)" },
     { key: "enviada", label: "Aguardando", value: quantidadePendentes, color: "var(--cor-primaria)" },
     { key: "rejeitada", label: "Rejeitadas", value: quantidadeRejeitadas, color: "var(--cor-perigo)" },
-    { key: "rascunho", label: "Rascunhos", value: quantidadeRascunhos, color: "var(--cor-borda)" },
   ];
 
   const chartTotal = chartItems.reduce((sum, item) => sum + item.value, 0);
@@ -348,11 +344,6 @@ function Measurements() {
                       <strong className="measurement-overview-card__metric-value">{quantidadeAprovadas}</strong>
                     </article>
 
-                    <article className="measurement-overview-card__metric measurement-overview-card__metric--rascunho">
-                      <span className="measurement-overview-card__metric-label">Rascunhos</span>
-                      <strong className="measurement-overview-card__metric-value">{quantidadeRascunhos}</strong>
-                    </article>
-
                     <article className="measurement-overview-card__metric measurement-overview-card__metric--enviada">
                       <span className="measurement-overview-card__metric-label">Aguardando revisão</span>
                       <strong className="measurement-overview-card__metric-value">{quantidadePendentes}</strong>
@@ -398,7 +389,6 @@ function Measurements() {
                 <option value="enviada">Aguardando revisão</option>
                 <option value="aprovada">Aprovada</option>
                 <option value="rejeitada">Rejeitada</option>
-                <option value="rascunho">Rascunho</option>
               </select>
             </div>
 

@@ -188,3 +188,49 @@ export async function updateMedicao(id, payload) {
   const response = await api.put(`/measurements/${id}`, body);
   return extractApiData(response.data);
 }
+
+/**
+ * Salva uma nova medição como rascunho.
+ * Equivale a createMedicao com status forçado para "rascunho".
+ */
+export async function saveDraftMedicao(payload) {
+  return createMedicao({ ...payload, status: "rascunho" });
+}
+
+/**
+ * Lista os rascunhos do usuário autenticado.
+ * Retorna apenas os rascunhos do próprio usuário (garantido pelo backend).
+ */
+export async function listDrafts(params = {}) {
+  const response = await api.get("/measurements/rascunhos", { params });
+  return extractApiData(response.data);
+}
+
+/**
+ * Versão paginada de listDrafts — retorna { data: [], pagination: {} }.
+ */
+export async function listDraftsPaginado(params = {}) {
+  const response = await api.get("/measurements/rascunhos", { params });
+  const payload = response.data;
+  return {
+    data:       payload?.data ?? [],
+    pagination: payload?.meta ?? null,
+  };
+}
+
+/**
+ * Converte um rascunho existente para status "enviada".
+ * Use quando o usuário envia definitivamente a partir da lista de rascunhos.
+ */
+export async function submitDraft(draftId) {
+  const response = await api.put(`/measurements/${draftId}`, { status: "enviada" });
+  return extractApiData(response.data);
+}
+
+/**
+ * Exclui um rascunho (soft delete). Só funciona para o dono do rascunho.
+ */
+export async function deleteMedicao(id) {
+  const response = await api.delete(`/measurements/${id}`);
+  return extractApiData(response.data);
+}

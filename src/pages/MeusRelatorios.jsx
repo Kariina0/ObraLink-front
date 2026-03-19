@@ -31,7 +31,7 @@ function getFotoUrl(m) {
 }
 
 function getInitialSummary() {
-  return { enviada: 0, aprovada: 0, rejeitada: 0, rascunho: 0 };
+  return { enviada: 0, aprovada: 0, rejeitada: 0 };
 }
 
 function MeusRelatorios() {
@@ -182,7 +182,7 @@ function MeusRelatorios() {
   };
 
   const totalSummary = statusSummary.enviada + statusSummary.aprovada +
-    statusSummary.rejeitada + statusSummary.rascunho;
+    statusSummary.rejeitada;
 
   return (
     <Layout>
@@ -225,7 +225,6 @@ function MeusRelatorios() {
                 <option value="enviada">Aguardando revisão</option>
                 <option value="aprovada">Aprovada</option>
                 <option value="rejeitada">Rejeitada</option>
-                <option value="rascunho">Rascunho</option>
               </select>
             </div>
 
@@ -327,7 +326,6 @@ function MeusRelatorios() {
               { key: "enviada",   label: "Aguardando revisão", bg: "var(--cor-aviso-clara)",   color: "var(--cor-aviso)"            },
               { key: "aprovada",  label: "Aprovadas",           bg: "var(--cor-sucesso-clara)", color: "var(--cor-sucesso)"          },
               { key: "rejeitada", label: "Rejeitadas",          bg: "var(--cor-perigo-clara)",  color: "var(--cor-perigo)"           },
-              { key: "rascunho",  label: "Rascunhos",           bg: "var(--cor-fundo)",         color: "var(--cor-texto-secundario)" },
             ].map(({ key, label, bg, color }) =>
               statusSummary[key] > 0 && (
                 <button
