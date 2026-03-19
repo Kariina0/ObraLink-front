@@ -188,3 +188,105 @@ export async function updateMedicao(id, payload) {
   const response = await api.put(`/measurements/${id}`, body);
   return extractApiData(response.data);
 }
+
+/**
+ * Salvar medição como rascunho (status: "rascunho")
+ * Pode ser um rascunho novo ou atualizar um existente
+ */
+export async function saveDraftMedicao(payload) {
+  const obraId = payload?.obra;
+
+  if (!obraId) {
+    throw new Error("Obra não selecionada. Selecione uma obra antes de salvar o rascunho.");
+  }
+
+  const obraNumero = Number(obraId);
+  if (!Number.isInteger(obraNumero) || obraNumero <= 0) {
+    throw new Error("Obra inválida. Selecione uma obra válida antes de salvar o rascunho.");
+  }
+
+  const comprimento = payload?.comprimento != null ? Number(payload.comprimento) : null;
+  const largura     = payload?.largura != null ? Number(payload.largura) : null;
+  const altura      = payload?.altura != null ? Number(payload.altura) : null;
+  const quantidadeDireta = payload?.quantidadeDireta != null ? Number(payload.quantidadeDireta) : null;
+  const unidadeMedicao = payload?.unidadeMedicao || "m²";
+
+  const areaCalculada = (comprimento && largura) ? comprimento * largura : (payload?.areaCalculada != null ? Number(payload.areaCalculada) : 0);
+  const volume        = (comprimento && largura && altura) ? comprimento * largura * altura : (payload?.volume != null ? Number(payload.volume) : 0);
+  const quantidadeItem = quantidadeDireta != null ? quantidadeDireta : (volume > 0 ? volume : (areaCalculada > 0 ? areaCalculada : comprimento || 0));
+
+  const areaNome   = payload?.area        || null;
+  const tipoServico = payload?.tipoServico || null;
+
+  const descricaoItem = areaNome
+    ? `Medição geométrica — ${areaNome}`
+    : "Medição geométrica";
+
+  const body = {
+    obra:         obraNumero,
+    data:         payload?.data || new Date().toISOString(),
+    area:         areaNome,
+    tipoServico,
+    observacoes:  payload?.observacoes || "",
+    status:       "rascunho", // ← Importante: salvar como rascunho
+    comprimento,
+    largura,
+    altura,
+    areaCalculada: areaCalculada > 0 ? areaCalculada : null,
+    volume:        volume > 0 ? volume : null,
+    itens: [
+      {
+        descricao:    descricaoItem,
+        quantidade:   quantidadeItem,
+        unidade:      unidadeMedicao,
+        valorUnitario: null,
+        valorTotal:    quantidadeItem,
+        observacoes:   payload?.observacoes || "",
+        local:         areaNome || "",
+      },
+    ],
+  };
+
+  if (Array.isArray(payload?.anexos)) {
+    const anexoIds = payload.anexos
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0);
+
+    if (anexoIds.length > 0) {
+      body.anexos = anexoIds;
+    }
+  }
+
+  const response = await api.post("/measurements", body);
+  return extractApiData(response.data);
+}
+
+/**
+ * Listar rascunhos do usuário atual
+ */
+export async function listDrafts(params = {}) {
+  const response = await api.get("/measurements/rascunhos", { params });
+  return extractApiData(response.data);
+}
+
+/**
+ * Listar rascunhos com paginação
+ */
+export async function listDraftsPaginado(params = {}) {
+  const response = await api.get("/measurements/rascunhos", { params });
+  const payload = response.data;
+  return {
+    data:         payload?.data  ?? [],
+    pagination:   payload?.meta  ?? null,
+    statusSummary: payload?.meta?.statusSummary ?? null,
+  };
+}
+
+/**
+ * Converter rascunho para medição enviada (finalizar)
+ * Atualiza o rascunho mudando status para "enviada"
+ */
+export async function submitDraft(draftId) {
+  const response = await api.put(`/measurements/${draftId}`, { status: "enviada" });
+  return extractApiData(response.data);
+}
