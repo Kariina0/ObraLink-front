@@ -58,6 +58,26 @@ export async function listObras(params = {}) {
   return obras.map(parseObra);
 }
 
+export async function listObrasPaginado(params = {}) {
+  const response = await api.get("/obras", { params });
+  const raw = response.data;
+  const payload = extractApiData(raw);
+
+  let obras;
+  if (Array.isArray(payload)) {
+    obras = payload;
+  } else if (Array.isArray(payload?.data)) {
+    obras = payload.data;
+  } else {
+    obras = extractApiList(raw);
+  }
+
+  return {
+    data: obras.map(parseObra),
+    pagination: payload?.pagination ?? payload?.meta ?? raw?.pagination ?? raw?.meta ?? null,
+  };
+}
+
 /**
  * Obtém uma obra pelo ID.
  * @param {number} id - ID da obra

@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import PaginationControls from "../components/PaginationControls";
 import { listAllMedicoesPaginado } from "../services/medicoesService";
 import {
   downloadManagementCsv,
@@ -61,7 +62,7 @@ function MeusRelatorios() {
     dataFim:     "",
   });
 
-  const totalPages      = Math.ceil(totalItems / PAGE_LIMIT_RELATORIOS);
+  const totalPages      = Math.max(1, Math.ceil(totalItems / PAGE_LIMIT_RELATORIOS));
   const temFiltroAtivo  = Object.values(filtros).some(Boolean);
 
   // Carrega lista de encarregados uma vez
@@ -368,10 +369,11 @@ function MeusRelatorios() {
               {temFiltroAtivo ? " (filtros ativos)" : ""}.
             </p>
 
-            {medicoes.map((m) => {
-              const fotoUrl   = fotoUrls[m.id] !== undefined ? fotoUrls[m.id] : getFotoUrl(m);
-              const expanded  = expandedId === m.id;
-              const tipoLabel = getTipoServicoLabel(m.tipoServico);
+            <div key={`reports-page-${currentPage}`} className="page-transition-fade page-transition-fade--stack">
+              {medicoes.map((m) => {
+                const fotoUrl   = fotoUrls[m.id] !== undefined ? fotoUrls[m.id] : getFotoUrl(m);
+                const expanded  = expandedId === m.id;
+                const tipoLabel = getTipoServicoLabel(m.tipoServico);
 
               // Data da medição (campo data) e data de envio (createdAt)
               const dataMedicao = m.data
@@ -381,8 +383,8 @@ function MeusRelatorios() {
                 ? `${new Date(m.createdAt).toLocaleDateString("pt-BR")} às ${new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
                 : null;
 
-              return (
-                <div key={m.id} className="mr-card">
+                return (
+                  <div key={m.id} className="mr-card">
                   {/* ── Cabeçalho do card ────────────────────────────────── */}
                   <div
                     className={`mr-card-header${expanded ? " is-expanded" : ""}`}
@@ -548,33 +550,20 @@ function MeusRelatorios() {
                       )}
                     </>
                   )}
-                </div>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
 
             {/* ── Paginação ──────────────────────────────────────────── */}
             {totalPages > 1 && (
-              <div className="paginacao-controles">
-                <button
-                  className="button-secondary"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || loading}
-                  style={{ padding: "8px 18px" }}
-                >
-                  ← Anterior
-                </button>
-                <span className="paginacao-info">
-                  Página {currentPage} de {totalPages}
-                </span>
-                <button
-                  className="button-secondary"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages || loading}
-                  style={{ padding: "8px 18px" }}
-                >
-                  Próxima →
-                </button>
-              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                loading={loading}
+                onChangePage={setCurrentPage}
+                className="measurements-pagination"
+              />
             )}
           </>
         )}

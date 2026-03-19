@@ -6,6 +6,7 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
+import PaginationControls from "../components/PaginationControls";
 import {
   aprovarMedicao,
   listAllMedicoesPaginado,
@@ -29,6 +30,10 @@ function getFotoMedUrl(m) {
   const caminho = m.foto || m.fotoUrl || m.arquivo || m.arquivoUrl;
   if (!caminho) return null;
   if (caminho.startsWith("http")) return caminho;
+  // Compatibilidade com payload legado: apenas o nome do arquivo (sem path)
+  if (!caminho.startsWith("/")) {
+    return `${BASE_URL}/api/files/raw/outros/${caminho}`;
+  }
   return `${BASE_URL}${caminho.startsWith("/") ? "" : "/"}${caminho}`;
 }
 
@@ -210,9 +215,12 @@ function Measurements() {
     }
     // Se o objeto já carrega a URL, usa diretamente sem nova requisição
     if (typeof firstAnexo === "object" && firstAnexo.url) {
+      const anexoTipo = firstAnexo.tipo || "outros";
       const url = firstAnexo.url.startsWith("http")
         ? firstAnexo.url
-        : `${BASE_URL}${firstAnexo.url.startsWith("/") ? "" : "/"}${firstAnexo.url}`;
+        : firstAnexo.url.startsWith("/")
+          ? `${BASE_URL}${firstAnexo.url}`
+          : `${BASE_URL}/api/files/raw/${anexoTipo}/${firstAnexo.url}`;
       setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
       if (openLightbox) setLightbox(url);
       return;
@@ -502,22 +510,23 @@ function Measurements() {
               )}
 
               {!isTableBusy && hasLoadedOnce && measurements.length > 0 && (
-                <table className="measurements-table">
-                  <thead>
-                    <tr>
-                      {reviewer && <th className="measurements-table__col-obra">Obra</th>}
-                      {reviewer && <th className="measurements-table__col-responsavel">Responsável</th>}
-                      <th className="measurements-table__col-item">Ambiente</th>
-                      <th className="measurements-table__col-area">Área (m²)</th>
-                      <th className="measurements-table__col-status">Status</th>
-                      <th className="measurements-table__col-photo">Foto</th>
-                      <th className="measurements-table__col-details">Detalhes</th>
-                      <th className="measurements-table__col-actions">{reviewer ? "Aprovação" : "Ações"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {measurements.map((m, idx) => (
-                      <React.Fragment key={m.id || idx}>
+                <div key={`measurements-page-${currentPage}`} className="page-transition-fade">
+                  <table className="measurements-table">
+                    <thead>
+                      <tr>
+                        {reviewer && <th className="measurements-table__col-obra">Obra</th>}
+                        {reviewer && <th className="measurements-table__col-responsavel">Responsável</th>}
+                        <th className="measurements-table__col-item">Ambiente</th>
+                        <th className="measurements-table__col-area">Área (m²)</th>
+                        <th className="measurements-table__col-status">Status</th>
+                        <th className="measurements-table__col-photo">Foto</th>
+                        <th className="measurements-table__col-details">Detalhes</th>
+                        <th className="measurements-table__col-actions">{reviewer ? "Aprovação" : "Ações"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {measurements.map((m, idx) => (
+                        <React.Fragment key={m.id || idx}>
                       {/* ── Linha da medição ──────────────────────────────── */}
                       <tr className="measurements-table__row">
                         {reviewer && (
@@ -742,10 +751,11 @@ function Measurements() {
                           </td>
                         </tr>
                       )}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
 
               {hasLoadedOnce && !isTableBusy && measurements.length === 0 && !erro && (
@@ -767,25 +777,13 @@ function Measurements() {
 
             {/* ── Controles de Paginação ────────────────────────────────── */}
             {hasLoadedOnce && measurements.length > 0 && totalPages > 1 && (
-              <div className="paginacao-controles measurements-pagination">
-                <button
-                  className="button-secondary"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || isTableBusy}
-                >
-                  ← Anterior
-                </button>
-                <span className="paginacao-info">
-                  Página {currentPage} de {totalPages}
-                </span>
-                <button
-                  className="button-secondary"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages || isTableBusy}
-                >
-                  Próxima →
-                </button>
-              </div>
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                loading={isTableBusy}
+                onChangePage={setCurrentPage}
+                className="measurements-pagination"
+              />
             )}
           </section>
         )}

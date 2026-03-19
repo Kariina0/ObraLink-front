@@ -3,8 +3,10 @@
 // Administradores também podem vincular/desvincular encarregados responsáveis.
 import React, { useContext, useState, useEffect, useCallback, useRef } from "react";
 import Layout from "../components/Layout";
+import PaginationControls from "../components/PaginationControls";
 import {
   listObras,
+  listObrasPaginado,
   createObra,
   deleteObra,
   updateObra,
@@ -53,6 +55,7 @@ function GerenciarObras() {
   const [obras, setObras]               = useState([]);
   const [loading, setLoading]           = useState(true);
   const [erro, setErro]                 = useState(null);
+  const [totalItems, setTotalItems]     = useState(0);
 
   // ── filtros ──────────────────────────────────────────────────────────────────────
   const [busca, setBusca]               = useState("");
@@ -86,18 +89,34 @@ function GerenciarObras() {
 
   // ── carregamento de usuários disponíveis (apenas quando abre painel de encarregados) ────
   // ── Fetch de obras com filtros server-side ──────────────────────────────────────
-  const carregarObras = useCallback(async (q = "", status = "") => {
+  const carregarObras = useCallback(async (q = "", status = "", page = 1) => {
     setLoading(true);
     setErro(null);
     try {
-      const params = { page: 1, limit: 100 };
+      const params = { page, limit: PAGE_LIMIT_OBRAS };
       if (q.trim())  params.q      = q.trim();
       if (status)    params.status = status;
-      const data = await listObras(params);
-      setObras(Array.isArray(data) ? data : []);
+      const { data, pagination } = await listObrasPaginado(params);
+      let lista = Array.isArray(data) ? data : [];
+      let total = pagination?.totalItems ?? null;
+
+      if (total === null) {
+        const fallbackParams = { page: 1, limit: 200 };
+        if (q.trim())  fallbackParams.q      = q.trim();
+        if (status)    fallbackParams.status = status;
+
+        const fallbackData = await listObras(fallbackParams);
+        total = fallbackData.length;
+        const startIndex = (page - 1) * PAGE_LIMIT_OBRAS;
+        lista = fallbackData.slice(startIndex, startIndex + PAGE_LIMIT_OBRAS);
+      }
+
+      setObras(lista);
+      setTotalItems(total);
     } catch {
       setErro("Não foi possível carregar as obras. Verifique a conexão e tente novamente.");
       setObras([]);
+      setTotalItems(0);
     } finally {
       setLoading(false);
     }
@@ -105,23 +124,31 @@ function GerenciarObras() {
 
   // função que usa filtros atuais (para recarregar after criar/editar)
   const loadObras = useCallback(
-    () => carregarObras(busca, filtroStatus),
-    [busca, filtroStatus, carregarObras],
+    () => carregarObras(busca, filtroStatus, displayPage),
+    [busca, filtroStatus, displayPage, carregarObras],
   );
 
   // Carga inicial + recarrega ao mudar filtros (debounce 500ms na busca textual)
   useEffect(() => {
     clearTimeout(buscaTimerRef.current);
     buscaTimerRef.current = setTimeout(
-      () => carregarObras(busca, filtroStatus),
+      () => carregarObras(busca, filtroStatus, displayPage),
       busca ? 500 : 0,
     );
     return () => clearTimeout(buscaTimerRef.current);
-  }, [busca, filtroStatus, carregarObras]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [busca, filtroStatus, displayPage, carregarObras]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setDisplayPage(1);
   }, [busca, filtroStatus]);
+
+  const totalDisplayPages = Math.max(1, Math.ceil(totalItems / PAGE_LIMIT_OBRAS));
+
+  useEffect(() => {
+    if (displayPage > totalDisplayPages) {
+      setDisplayPage(totalDisplayPages);
+    }
+  }, [displayPage, totalDisplayPages]);
 
   const loadUsuarios = async (obraId) => {
     try {
@@ -592,13 +619,8 @@ function GerenciarObras() {
   }
 
   // ── Lista de obras (modo principal) ────────────────────────────────────────
-  const DISPLAY_LIMIT = PAGE_LIMIT_OBRAS;
-  const totalDisplayPages = Math.max(1, Math.ceil(obras.length / DISPLAY_LIMIT));
   const currentDisplayPage = Math.min(displayPage, totalDisplayPages);
-  const obrasPaginadas = obras.slice(
-    (currentDisplayPage - 1) * DISPLAY_LIMIT,
-    currentDisplayPage * DISPLAY_LIMIT,
-  );
+  const obrasPaginadas = obras;
 
   return (
     <Layout>
@@ -693,7 +715,7 @@ function GerenciarObras() {
 
         {/* ── Cards de obras ───────────────────────────────────────────── */}
         {!loading && (
-          <div className="obras-list">
+          <div key={`works-page-${currentDisplayPage}`} className="obras-list page-transition-fade page-transition-fade--stack">
             {obrasPaginadas.map((obra) => (
               <div key={obra.id} className="obra-card">
                 <div className="obra-card-header">
@@ -779,25 +801,13 @@ function GerenciarObras() {
         )}
 
         {!loading && !erro && obras.length > 0 && totalDisplayPages > 1 && (
-          <div className="paginacao-controles">
-            <button
-              className="button-secondary"
-              onClick={() => setDisplayPage((p) => Math.max(1, p - 1))}
-              disabled={currentDisplayPage === 1}
-            >
-              ← Anterior
-            </button>
-            <span className="paginacao-info">
-              Página {currentDisplayPage} de {totalDisplayPages}
-            </span>
-            <button
-              className="button-secondary"
-              onClick={() => setDisplayPage((p) => Math.min(totalDisplayPages, p + 1))}
-              disabled={currentDisplayPage === totalDisplayPages}
-            >
-              Próxima →
-            </button>
-          </div>
+          <PaginationControls
+            currentPage={currentDisplayPage}
+            totalPages={totalDisplayPages}
+            loading={loading}
+            onChangePage={setDisplayPage}
+            className="measurements-pagination"
+          />
         )}
 
         {!loading && obras.length > 0 && (
@@ -806,7 +816,7 @@ function GerenciarObras() {
             color: "var(--cor-texto-secundario)",
             fontSize: "var(--tamanho-fonte-pequena)",
           }}>
-            {obras.length} {obras.length === 1 ? "obra encontrada" : "obras encontradas"}
+            Exibindo {obras.length} de {totalItems} {totalItems === 1 ? "obra" : "obras"}
             {(busca || filtroStatus) ? " para os filtros aplicados" : ""}.
           </p>
         )}

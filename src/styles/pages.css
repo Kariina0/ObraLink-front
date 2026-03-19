@@ -2322,6 +2322,34 @@
   gap: var(--espacamento-sm);
 }
 
+.page-transition-fade {
+  animation: pageFadeSlideIn 0.28s ease;
+}
+
+.page-transition-fade--stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacamento-lg);
+}
+
+@keyframes pageFadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition-fade {
+    animation: none;
+  }
+}
+
 /* ========================================
    STATUS DE SOLICITAÇÕES — LISTA COMPACTA
    ======================================== */
@@ -3586,6 +3614,10 @@
   text-align: center;
 }
 
+.paginacao-controles .button-secondary {
+  min-width: 128px;
+}
+
 /* ========================================
    FORM CARD (PurchaseRequest e similares)
    ======================================== */
@@ -4353,6 +4385,24 @@
     text-align: center;
   }
 
+  .paginacao-controles .button-secondary {
+    width: min(100%, 280px);
+  }
+
+  .obras-list {
+    grid-template-columns: 1fr;
+  }
+
+  .obra-card-header,
+  .mr-card-header {
+    gap: var(--espacamento-sm);
+  }
+
+  .mr-card-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   /* Tabela de medições — scroll horizontal */
   .measurements-table {
     min-width: 600px;
@@ -4528,6 +4578,28 @@
     flex-direction: column;
     gap: var(--espacamento-sm);
     text-align: center;
+  }
+
+  .paginacao-info {
+    min-width: 0;
+  }
+
+  .paginacao-controles .button-secondary {
+    width: 100%;
+  }
+
+  .measurements-pagination {
+    width: 100%;
+  }
+
+  .mr-card-header,
+  .obra-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .mr-card-right {
+    width: 100%;
   }
 
   /* Rejeição — área de botões em coluna */
