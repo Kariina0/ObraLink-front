@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef, useMemo, useContext } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
-import { createMedicao, getMedicaoById, updateMedicao, listDraftsPaginado, submitDraft } from "../services/medicoesService";
+import { createMedicao, getMedicaoById, updateMedicao } from "../services/medicoesService";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
 import useObras from "../hooks/useObras";
@@ -74,11 +74,6 @@ function EnviarMedicao() {
   const fileInputRef = useRef(null);
   const { obras, loadingObras } = useObras(100);
   const nomeResponsavel = user?.nome || "Usuário autenticado";
-
-  // Estados para carregar rascunhos
-  const [rascunhos, setRascunhos] = useState([]);
-  const [loadingRascunhos, setLoadingRascunhos] = useState(false);
-  const [mostraRascunhos, setMostraRascunhos] = useState(false);
 
   const mapaAreas = useMemo(
     () => Object.fromEntries(AREAS_MEDICAO.map((item) => [item.value, item.label])),
@@ -189,26 +184,6 @@ function EnviarMedicao() {
     }
   }, [obras, modoEdicao]);
 
-  // Carrega rascunhos ao abrir a página
-  useEffect(() => {
-    if (modoEdicao || !mostraRascunhos) return;
-
-    async function carregarRascunhos() {
-      try {
-        setLoadingRascunhos(true);
-        const res = await listDraftsPaginado({ page: 1, limit: 20 });
-        setRascunhos(Array.isArray(res.data) ? res.data : []);
-      } catch (err) {
-        console.error("Erro ao carregrar rascunhos:", err);
-        setRascunhos([]);
-      } finally {
-        setLoadingRascunhos(false);
-      }
-    }
-
-    carregarRascunhos();
-  }, [mostraRascunhos, modoEdicao]);
-
   useEffect(() => {
     return () => {
       if (preview) {
@@ -304,31 +279,6 @@ function EnviarMedicao() {
   }
 
   // ─── Envio do formulário ─────────────────────────────────────────────────────
-  async function carregarRascunho(rascunho) {
-    try {
-      setError("");
-      const m = rascunho; // Rascunho já carregado da lista
-      setForm({
-        obra:         m.obra != null ? String(m.obra) : "",
-        area:         m.area         || m.areaNome     || "",
-        tipoServico:  m.tipoServico   || "",
-        dataMedicao:  formatDateToInput(m.data) || getTodayInputDate(),
-        comprimento:  m.comprimento   != null ? String(m.comprimento)  : "",
-        largura:      m.largura       != null ? String(m.largura)      : "",
-        altura:       m.altura        != null ? String(m.altura)       : "",
-        quantidade:   m.quantidade    != null
-          ? String(m.quantidade)
-          : (m.itens?.[0]?.quantidade != null ? String(m.itens[0].quantidade) : ""),
-        observacoes:  m.observacoes   || "",
-      });
-      setMostraRascunhos(false);
-      // Scroll para o topo do formulário
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err) {
-      setError("Não foi possível carregar o rascunho. " + extractApiMessage(err));
-    }
-  }
-
   async function handleSubmit(mode = "enviada") {
     if (loadingMode) return;
 
@@ -539,76 +489,6 @@ function EnviarMedicao() {
             : <>Registre as dimensões e informações da medição realizada na obra. Os campos marcados com <strong>*</strong> são obrigatórios.</>
           }
         </p>
-
-        {!modoEdicao && (
-          <div style={{ marginBottom: "var(--espacamento-lg)" }}>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={() => setMostraRascunhos(!mostraRascunhos)}
-              style={{ marginBottom: "var(--espacamento-md)" }}
-            >
-              {mostraRascunhos ? "▼ Carregar rascunho" : "► Carregar rascunho"}
-            </button>
-
-            {mostraRascunhos && (
-              <div className="card" style={{ padding: "var(--espacamento-lg)", marginBottom: "var(--espacamento-lg)" }}>
-                <h3 style={{ marginTop: 0, marginBottom: "var(--espacamento-md)" }}>
-                  Rascunhos guardados
-                </h3>
-
-                {loadingRascunhos && <p>Carregando rascunhos...</p>}
-
-                {!loadingRascunhos && rascunhos.length === 0 && (
-                  <p style={{ color: "var(--cor-texto-secundario)" }}>Nenhum rascunho salvo ainda.</p>
-                )}
-
-                {!loadingRascunhos && rascunhos.length > 0 && (
-                  <div style={{ display: "grid", gap: "var(--espacamento-md)" }}>
-                    {rascunhos.map((rascunho) => {
-                      const obraNome = typeof rascunho.obra === "object"
-                        ? rascunho.obra?.nome
-                        : null;
-                      const dataBr = rascunho.data
-                        ? new Date(rascunho.data).toLocaleDateString("pt-BR")
-                        : "—";
-
-                      return (
-                        <div
-                          key={rascunho.id}
-                          style={{
-                            padding: "var(--espacamento-md)",
-                            border: "1px solid var(--cor-borda)",
-                            borderRadius: "var(--borda-radius)",
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <div>
-                            <p style={{ margin: "0 0 4px 0", fontWeight: 600 }}>
-                              {obraNome ? `${obraNome}` : `Obra #${rascunho.obra}`}
-                            </p>
-                            <p style={{ margin: "0", fontSize: "var(--tamanho-fonte-pequena)", color: "var(--cor-texto-secundario)" }}>
-                              {rascunho.observacoes || "Sem observações"} • {dataBr}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            className="button-secondary"
-                            onClick={() => carregarRascunho(rascunho)}
-                          >
-                            Carregar
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {loadingEdicao && (
           <p style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>

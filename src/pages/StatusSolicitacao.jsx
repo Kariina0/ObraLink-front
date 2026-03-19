@@ -256,14 +256,9 @@ function StatusSolicitacao() {
     setDisplayPage(1);
   };
 
-  const hasDraftFilters = !!(
+  const hasActiveFilters = !!(
     draftFilters.status || draftFilters.prioridade || draftFilters.obra ||
     draftFilters.responsavel || draftFilters.periodoInicio || draftFilters.periodoFim
-  );
-
-  const hasAppliedFilters = !!(
-    appliedFilters.status || appliedFilters.prioridade || appliedFilters.obra ||
-    appliedFilters.responsavel || appliedFilters.periodoInicio || appliedFilters.periodoFim
   );
 
   // ── Filtragem e ordenação (client-side) ───────────────────────────────
@@ -309,25 +304,21 @@ function StatusSolicitacao() {
 
   return (
     <Layout>
-      <div className="page-container" style={{ maxWidth: "1200px" }}>
+      <div className="page-container">
         <h1 className="page-title">Solicitações de Materiais</h1>
         <p className="page-description">
           Acompanhe o andamento das solicitações de materiais.
           {reviewer && " Como supervisor, você pode aprovar ou reprovar solicitações que estão aguardando avaliação."}
         </p>
 
-        <div
-          className="form-container"
-          style={{ marginBottom: "var(--espacamento-lg)", padding: "var(--espacamento-md)" }}
-        >
-          <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-md)", color: "var(--cor-texto-principal)" }}>
-            Filtros
-          </p>
+        {/* ── Barra de filtros ── */}
+        <div className="ss-filters">
           <div className="ss-filters-grid">
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="status-filter">Status</label>
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="status-filter">Status</label>
               <select
                 id="status-filter"
+                className="ss-filter-select"
                 value={draftFilters.status}
                 onChange={(e) => setDraftFilters((prev) => ({ ...prev, status: e.target.value }))}
                 aria-label="Filtrar por status"
@@ -339,10 +330,11 @@ function StatusSolicitacao() {
               </select>
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="prioridade-filter">Prioridade</label>
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="prioridade-filter">Prioridade</label>
               <select
                 id="prioridade-filter"
+                className="ss-filter-select"
                 value={draftFilters.prioridade}
                 onChange={(e) => setDraftFilters((prev) => ({ ...prev, prioridade: e.target.value }))}
                 aria-label="Filtrar por prioridade"
@@ -355,10 +347,11 @@ function StatusSolicitacao() {
               </select>
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="obra-filter">Obra</label>
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="obra-filter">Obra</label>
               <select
                 id="obra-filter"
+                className="ss-filter-select"
                 value={draftFilters.obra}
                 onChange={(e) => setDraftFilters((prev) => ({ ...prev, obra: e.target.value }))}
                 aria-label="Filtrar por obra"
@@ -372,11 +365,12 @@ function StatusSolicitacao() {
               </select>
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="responsavel-filter">Responsável</label>
+            <div className="ss-filter-field">
+              <label className="ss-filter-label" htmlFor="responsavel-filter">Responsável</label>
               <input
                 id="responsavel-filter"
                 type="text"
+                className="ss-filter-input"
                 placeholder="Digite o nome"
                 value={draftFilters.responsavel}
                 onChange={(e) => setDraftFilters((prev) => ({ ...prev, responsavel: e.target.value }))}
@@ -384,46 +378,41 @@ function StatusSolicitacao() {
               />
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="periodo-inicio-filter">Data início</label>
-              <input
-                id="periodo-inicio-filter"
-                type="date"
-                value={draftFilters.periodoInicio}
-                onChange={(e) => setDraftFilters((prev) => ({ ...prev, periodoInicio: e.target.value }))}
-                aria-label="Data inicial"
-              />
+            <div className="ss-filter-field ss-filter-field--date">
+              <label className="ss-filter-label" htmlFor="periodo-inicio-filter">Período</label>
+              <div className="ss-filter-date-group">
+                <input
+                  id="periodo-inicio-filter"
+                  type="date"
+                  className="ss-filter-select ss-filter-date"
+                  value={draftFilters.periodoInicio}
+                  onChange={(e) => setDraftFilters((prev) => ({ ...prev, periodoInicio: e.target.value }))}
+                  aria-label="Data inicial"
+                />
+                <span className="ss-filter-date-sep">até</span>
+                <input
+                  type="date"
+                  className="ss-filter-select ss-filter-date"
+                  value={draftFilters.periodoFim}
+                  onChange={(e) => setDraftFilters((prev) => ({ ...prev, periodoFim: e.target.value }))}
+                  aria-label="Data final"
+                />
+              </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label htmlFor="periodo-fim-filter">Data fim</label>
-              <input
-                id="periodo-fim-filter"
-                type="date"
-                value={draftFilters.periodoFim}
-                onChange={(e) => setDraftFilters((prev) => ({ ...prev, periodoFim: e.target.value }))}
-                aria-label="Data final"
-              />
-            </div>
-
-            <div className="ss-filter-buttons">
+            <div className="ss-filter-actions">
               <button
                 type="button"
-                className="button-primary"
+                className="button-primary ss-filter-search-button"
                 onClick={applyFilters}
-                style={{ width: "100%", padding: "15px 12px", marginTop: 0 }}
               >
                 Pesquisar
               </button>
-              <button
-                type="button"
-                className="button-secondary"
-                onClick={clearFilters}
-                disabled={!hasDraftFilters && !hasAppliedFilters}
-                style={{ width: "100%", marginTop: 0, padding: "15px 12px" }}
-              >
-                Limpar filtros
-              </button>
+              {hasActiveFilters && (
+                <button type="button" className="ss-filter-clear" onClick={clearFilters}>
+                  Limpar filtros
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -438,7 +427,7 @@ function StatusSolicitacao() {
         {!erro && !loading && sortedFiltered.length === 0 && (
           <div className="card" style={{ textAlign: "center", padding: "var(--espacamento-xl)" }}>
             <p>
-              {hasAppliedFilters
+              {hasActiveFilters
                 ? "Nenhuma solicitação encontrada para os filtros aplicados."
                 : "Nenhuma solicitação encontrada."}
             </p>
@@ -447,11 +436,6 @@ function StatusSolicitacao() {
 
         {!loading && sortedFiltered.length > 0 && (
           <>
-            <p className="ss-results-info">
-              Exibindo {pageItems.length} de {sortedFiltered.length} {sortedFiltered.length === 1 ? "solicitação" : "solicitações"}
-              {hasAppliedFilters ? " (filtros ativos)" : ""}.
-            </p>
-
             <div className="status-solicitacao-list">
               {pageItems.map((s, idx) => {
                 const originalIndex = solicitacoes.indexOf(s);
@@ -465,53 +449,76 @@ function StatusSolicitacao() {
                 const justificativa  = getJustificativa(s);
 
                 return (
-                  <article key={requestId} className="card status-solicitacao-card-clean">
-                    <div className="ss-card-header">
-                      <div className="ss-card-main">
-                        <div className="ss-card-title-row">
-                          <strong className="ss-card-title">{getObraLabel(s)}</strong>
-                          <span className={`ss-priority-badge ss-priority-badge--${String(s.prioridade || "media").toLowerCase()}`}>
+                  <article key={requestId} className="card status-solicitacao-card">
+                    {/* Cabeçalho do card */}
+                    <div className="status-solicitacao-header-row">
+                      {/* Linha superior: obra/prioridade à esquerda, status/toggle à direita */}
+                      <div className="status-solicitacao-line status-solicitacao-line--primary status-solicitacao-line--top">
+                        <div className="status-solicitacao-top-left">
+                          <strong className="status-solicitacao-obra">{getObraLabel(s)}</strong>
+                          <span className={`status-solicitacao-priority status-solicitacao-priority--${String(s.prioridade || "media").toLowerCase()}`}>
                             Prioridade: {getPrioridadeLabel(s.prioridade)}
                           </span>
                         </div>
-                        <p className="ss-card-meta-line">
-                          <span>
-                            <strong>Responsável:</strong>{" "}
-                            {getResponsavelLabel(s) || "Responsável não informado"}
+
+                        <div className="status-solicitacao-top-right">
+                          <span className={`status-badge status-solicitacao-status-badge ${currentStatus || "pendente"}`}>
+                            {statusLabel(s)}
                           </span>
-                          <span><strong>Data:</strong> {dataSolicitacao}</span>
-                        </p>
+                          <button
+                            type="button"
+                            className="status-solicitacao-toggle"
+                            onClick={() => toggleCardExpansion(requestId)}
+                            aria-expanded={isExpanded}
+                          >
+                            <span>{isExpanded ? "Recolher" : "Ver detalhes"}</span>
+                            <span
+                              className={`status-solicitacao-toggle-icon ${isExpanded ? "is-open" : ""}`}
+                              aria-hidden="true"
+                            >▼</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="ss-card-right">
-                        <span className={`status-badge ss-status-badge ${currentStatus || "pendente"}`}>
-                          {statusLabel(s)}
+                      {/* Linha: responsável + data */}
+                      <p className="status-solicitacao-line">
+                        <span>
+                          <strong>Responsável:</strong>{" "}
+                          {getResponsavelLabel(s) || "Responsável não informado"}
                         </span>
-                        <button
-                          type="button"
-                          className="button-secondary ss-toggle-button"
-                          onClick={() => toggleCardExpansion(requestId)}
-                          aria-expanded={isExpanded}
-                        >
-                          {isExpanded ? "Ocultar detalhes" : "Ver detalhes"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {!isExpanded && (
-                      <p className="ss-card-summary">
-                        {itens.length > 0
-                          ? `${itens.length} ${itens.length === 1 ? "item solicitado" : "itens solicitados"}`
-                          : "Sem itens cadastrados"}
-                        {justificativa ? " · Com justificativa" : ""}
+                        <span>
+                          <strong>Data:</strong> {dataSolicitacao}
+                          {itens.length > 0 && (
+                            <span className="status-solicitacao-item-count">
+                              {" · "}{itens.length}{" "}
+                              {itens.length === 1 ? "item solicitado" : "itens solicitados"}
+                            </span>
+                          )}
+                        </span>
                       </p>
-                    )}
+
+                      {/* Micro-resumo só no card recolhido */}
+                      {!isExpanded && (
+                        <div className="ss-micro-summary">
+                          <span className="ss-micro-text">
+                            {itens.length > 0
+                              ? `${itens.length} ${itens.length === 1 ? "item" : "itens"}`
+                              : "Sem itens"}
+                          </span>
+                          {justificativa && (
+                            <span className="ss-micro-text ss-micro-text--muted">
+                              Justificativa presente
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Ações rápidas no card fechado (apenas reviewer + pendente) */}
                     {!isExpanded && reviewer && isPending && rejectTarget !== requestId && (
-                      <div className="ss-card-actions">
+                      <div className="ss-quick-actions">
                         <button
-                          className="button-success"
+                          className="button-success ss-quick-action-btn"
                           onClick={() => handleApprove(requestId)}
                           disabled={loadingAction}
                           title="Aprovar solicitação"
@@ -519,7 +526,7 @@ function StatusSolicitacao() {
                           {loadingAction ? "..." : "Aprovar"}
                         </button>
                         <button
-                          className="button-danger"
+                          className="button-danger ss-quick-action-btn"
                           onClick={() => quickReject(requestId)}
                           disabled={loadingAction}
                           title="Rejeitar solicitação"
@@ -531,7 +538,7 @@ function StatusSolicitacao() {
 
                     {/* Formulário de rejeição no card fechado */}
                     {!isExpanded && reviewer && rejectTarget === requestId && (
-                      <div className="reject-form">
+                      <div className="reject-form status-solicitacao-reject-form">
                         <label htmlFor={`motivo-quick-${requestId}`}>
                           Informe o motivo da rejeição (opcional):
                         </label>
@@ -542,16 +549,16 @@ function StatusSolicitacao() {
                           placeholder="Ex: Material fora do orçamento aprovado..."
                           rows={3}
                         />
-                        <div className="reject-form-buttons ss-card-actions">
+                        <div className="reject-form-buttons status-solicitacao-actions">
                           <button
-                            className="button-danger"
+                            className="button-danger status-solicitacao-action-button"
                             onClick={() => confirmReject(requestId)}
                             disabled={loadingAction}
                           >
                             {loadingAction ? "Rejeitando..." : "Confirmar Rejeição"}
                           </button>
                           <button
-                            className="button-secondary"
+                            className="button-secondary status-solicitacao-action-button"
                             onClick={cancelReject}
                             disabled={loadingAction}
                           >
@@ -564,44 +571,44 @@ function StatusSolicitacao() {
                     {/* Conteúdo expandido */}
                     {isExpanded && (
                       <>
-                        <div className="ss-card-section">
-                          <p className="ss-card-section-title">Materiais solicitados</p>
+                        <div className="status-solicitacao-materials">
+                          <p className="status-solicitacao-section-title">Materiais solicitados</p>
                           {itens.length > 0 ? (
-                            <ul className="ss-card-items-list">
+                            <ul className="status-solicitacao-items-list">
                               {itens.map((item, i) => (
                                 <li key={i}>{item.descricao || item.nome || item}</li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="ss-card-empty">Nenhum material informado.</p>
+                            <p className="status-solicitacao-empty">Nenhum material informado.</p>
                           )}
                         </div>
 
                         {justificativa && (
-                          <div className="ss-info-box">
+                          <div className="status-solicitacao-rejection-box status-solicitacao-justificativa-box">
                             <strong>Justificativa / observações</strong>
                             <p>{justificativa}</p>
                           </div>
                         )}
 
                         {isRejectedStatus(currentStatus) && s.motivoRejeicao && (
-                          <div className="ss-info-box ss-info-box--danger">
+                          <div className="status-solicitacao-rejection-box">
                             <strong>Motivo da rejeição</strong>
                             <p>{s.motivoRejeicao}</p>
                           </div>
                         )}
 
                         {reviewer && isPending && rejectTarget !== requestId && (
-                          <div className="ss-card-actions">
+                          <div className="status-solicitacao-actions">
                             <button
-                              className="button-success"
+                              className="button-success status-solicitacao-action-button"
                               onClick={() => handleApprove(requestId)}
                               disabled={loadingAction}
                             >
                               {loadingAction ? "Processando..." : "Aprovar"}
                             </button>
                             <button
-                              className="button-danger"
+                              className="button-danger status-solicitacao-action-button"
                               onClick={() => openRejectForm(requestId)}
                               disabled={loadingAction}
                             >
@@ -611,7 +618,7 @@ function StatusSolicitacao() {
                         )}
 
                         {reviewer && rejectTarget === requestId && (
-                          <div className="reject-form">
+                          <div className="reject-form status-solicitacao-reject-form">
                             <label htmlFor={`motivo-${requestId}`}>
                               Informe o motivo da rejeição (opcional):
                             </label>
@@ -622,16 +629,16 @@ function StatusSolicitacao() {
                               placeholder="Ex: Material fora do orçamento aprovado..."
                               rows={3}
                             />
-                            <div className="reject-form-buttons ss-card-actions">
+                            <div className="reject-form-buttons status-solicitacao-actions">
                               <button
-                                className="button-danger"
+                                className="button-danger status-solicitacao-action-button"
                                 onClick={() => confirmReject(requestId)}
                                 disabled={loadingAction}
                               >
                                 {loadingAction ? "Rejeitando..." : "Confirmar Rejeição"}
                               </button>
                               <button
-                                className="button-secondary"
+                                className="button-secondary status-solicitacao-action-button"
                                 onClick={cancelReject}
                                 disabled={loadingAction}
                               >
