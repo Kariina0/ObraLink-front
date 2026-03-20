@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef, useMemo, useContext } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Layout from "../components/Layout";
+import DraftsPanel from "../components/DraftsPanel";
 import {
   createMedicao,
   deleteMedicao,
@@ -26,6 +27,7 @@ import {
 import { enqueueSyncOperation } from "../utils/syncQueue";
 import { AuthContext } from "../context/AuthContext";
 import "../styles/pages.css";
+import "../styles/drafts.css";
 
 const TOAST_TIMEOUT_MS = 4500;
 
@@ -574,96 +576,23 @@ function EnviarMedicao() {
           className="form-container medicao-form-container"
         >
           {!modoEdicao && (
-            <section
-              style={{
-                marginBottom: "var(--espacamento-lg)",
-                padding: "var(--espacamento-lg)",
-                border: "1px solid var(--cor-borda)",
-                borderRadius: "var(--borda-radius)",
-                background: "var(--cor-fundo)",
+            <DraftsPanel
+              rascunhos={rascunhos}
+              loading={loadingRascunhos}
+              open={mostraRascunhos}
+              onToggle={async () => {
+                const next = !mostraRascunhos;
+                setMostraRascunhos(next);
+                if (next && rascunhos.length === 0 && !loadingRascunhos) {
+                  await carregarRascunhos();
+                }
               }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--espacamento-sm)", marginBottom: mostraRascunhos ? "var(--espacamento-md)" : 0 }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: "var(--tamanho-fonte-grande)" }}>Carregar rascunho</h2>
-                  <p style={{ margin: "4px 0 0 0", color: "var(--cor-texto-secundario)" }}>
-                    Seus rascunhos ficam visíveis apenas para você.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="button-secondary"
-                  onClick={async () => {
-                    const next = !mostraRascunhos;
-                    setMostraRascunhos(next);
-                    if (next && rascunhos.length === 0 && !loadingRascunhos) {
-                      await carregarRascunhos();
-                    }
-                  }}
-                >
-                  {mostraRascunhos ? "Ocultar rascunhos" : "Ver rascunhos"}
-                </button>
-              </div>
-
-              {mostraRascunhos && (
-                <div>
-                  {loadingRascunhos ? (
-                    <p style={{ margin: 0 }}>Carregando rascunhos...</p>
-                  ) : rascunhos.length === 0 ? (
-                    <p style={{ margin: 0, color: "var(--cor-texto-secundario)" }}>
-                      Nenhum rascunho salvo até o momento.
-                    </p>
-                  ) : (
-                    <div style={{ display: "grid", gap: "var(--espacamento-sm)" }}>
-                      {rascunhos.map((rascunho) => (
-                        <div
-                          key={rascunho.id}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            gap: "var(--espacamento-md)",
-                            padding: "var(--espacamento-md)",
-                            border: "1px solid var(--cor-borda)",
-                            borderRadius: "var(--borda-radius)",
-                            background: Number(rascunhoAtivoId) === Number(rascunho.id)
-                              ? "var(--cor-fundo-secundario)"
-                              : "var(--cor-card)",
-                          }}
-                        >
-                          <div>
-                            <strong>
-                              {mapaTipos[rascunho.tipoServico] || "Serviço sem tipo"}
-                            </strong>
-                            <p style={{ margin: "4px 0 0 0", color: "var(--cor-texto-secundario)" }}>
-                              {mapaAreas[rascunho.area] || rascunho.area || "Área não informada"}
-                              {rascunho.data ? ` • ${new Date(rascunho.data).toLocaleDateString("pt-BR")}` : ""}
-                            </p>
-                          </div>
-
-                          <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              className="button-primary"
-                              onClick={() => carregarRascunho(rascunho)}
-                            >
-                              Carregar
-                            </button>
-                            <button
-                              type="button"
-                              className="button-secondary"
-                              onClick={() => excluirRascunho(rascunho.id)}
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
+              onLoad={carregarRascunho}
+              onDelete={excluirRascunho}
+              activeId={rascunhoAtivoId}
+              mapaTipos={mapaTipos}
+              mapaAreas={mapaAreas}
+            />
           )}
 
           <div className="medicao-topo-grid" aria-label="Informações da medição">

@@ -1,0 +1,143 @@
+/* Drafts panel — estilos minimalistas */
+.drafts-panel {
+  margin-bottom: var(--espacamento-lg);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--cor-fundo-secundario);
+  border: 1px solid rgba(16,24,40,0.15);
+  box-shadow: 0 1px 6px rgba(16,24,40,0.03);
+}
+
+.drafts-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drafts-panel__title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--cor-texto-principal);
+  line-height: 1.25;
+}
+
+.drafts-panel__subtitle {
+  margin: 4px 0 0 0;
+  color: var(--cor-texto-secundario);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.drafts-panel__toggle {
+  background: transparent;
+  border: none;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cor-texto-secundario);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 180ms ease, background 120ms ease, color 120ms ease;
+}
+
+.drafts-panel__toggle.is-open { transform: rotate(180deg); color: var(--cor-primaria); }
+
+.drafts-list {
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.drafts-list__items {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.draft-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cor-fundo);
+  border: 1px solid var(--cor-borda);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.draft-item.is-active {
+  background: var(--cor-fundo-secundario);
+  border-color: rgba(0,0,0,0.06);
+}
+
+.draft-item__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.draft-item__title {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--cor-texto-principal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-item__meta-sub {
+  margin-top: 4px;
+  font-size: 0.84rem;
+  color: var(--cor-texto-secundario);
+}
+
+.draft-item__actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.draft-action-link {
+  background: transparent;
+  border: none;
+  color: var(--cor-primaria);
+  font-size: 0.92rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.draft-action-link:hover { text-decoration-thickness: 1.8px; }
+
+.draft-action-link--danger { color: var(--cor-perigo); }
+
+.drafts-empty {
+  margin: 8px 0 0 0;
+  color: var(--cor-texto-secundario);
+  font-size: 0.92rem;
+}
+
+/* Override do texto de carregamento apenas dentro do painel de rascunhos */
+.drafts-panel .carregando {
+  margin: 6px 0 0 0;
+  padding: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--cor-texto-secundario);
+  text-align: left;
+  line-height: 1.4;
+}
+
+.drafts-panel .carregando::before {
+  content: ""; /* remove o ícone genérico para aparência mais limpa */
+}
