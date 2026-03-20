@@ -43,6 +43,10 @@ export const AuthProvider = ({ children }) => {
       const storedUser = localStorage.getItem("user");
 
       if (!storedToken || !storedUser) {
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
+        setUser(null);
         setAuthChecked(true);
         return;
       }
@@ -52,7 +56,10 @@ export const AuthProvider = ({ children }) => {
         setUser(JSON.parse(storedUser));
       } catch (_) {
         // JSON inválido — limpar e reiniciar
+        setUser(null);
         localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
         setAuthChecked(true);
         return;
       }

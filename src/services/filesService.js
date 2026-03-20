@@ -27,9 +27,7 @@ export async function uploadFile(file, extra = {}) {
     }
   });
 
-  const response = await api.post("/files/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const response = await api.post("/files/upload", formData);
 
   return extractApiData(response.data);
 }

@@ -52,7 +52,7 @@ frontend/
 
 - Node.js >= 18
 - npm >= 9
-- Backend (`Projeto-backend-master/`) rodando em `http://localhost:5000`
+- Backend (`../backend/`) rodando na mesma porta configurada em `backend/.env`
 
 ---
 
@@ -70,10 +70,10 @@ npm install
 Crie o arquivo `.env` na raiz do projeto frontend:
 
 ```bash
-REACT_APP_API_URL=http://localhost:5000/api
+REACT_APP_API_URL=http://localhost:5001/api
 ```
 
-> O arquivo `.env-example` já contém esse valor — basta copiá-lo.
+> Ajuste a porta para a mesma usada pelo backend local. Neste workspace atual, a API respondeu em `http://localhost:5001/api`.
 
 ### 3. Iniciar o frontend
 
@@ -86,10 +86,18 @@ O app abrirá em `http://localhost:3000`.
 ### 4. Iniciar o backend (em outro terminal)
 
 ```bash
-cd Projeto-backend-master
+cd ../backend
 npm install
 npm start
 ```
+
+---
+
+## 📚 Documentação complementar
+
+- [docs/README.md](docs/README.md) -> índice da documentação do frontend
+- [docs/ARQUITETURA_FRONTEND.md](docs/ARQUITETURA_FRONTEND.md) -> mapa de módulos, rotas e fluxos principais
+- [docs/FRONTEND_CHECKLIST.md](docs/FRONTEND_CHECKLIST.md) -> pendências e alinhamentos técnicos
 
 ---
 

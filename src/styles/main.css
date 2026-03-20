@@ -83,6 +83,13 @@ html {
   width: 100%;
 }
 
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
 body {
   font-family: var(--fonte-principal);
   font-size: var(--tamanho-fonte-base);
@@ -338,6 +345,8 @@ body {
    CONTAINER DE CONTEÚDO
    ======================================== */
 .container {
+  width: 100%;
+  min-width: 0;
   padding: var(--espacamento-lg);
   max-width: 1200px;
   margin: 0 auto;

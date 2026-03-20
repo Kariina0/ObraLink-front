@@ -21,10 +21,9 @@ import { TIPOS_SERVICO, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao"
 import { normalizeMedicao } from "../utils/normalizeMedicao";
 import { PAGE_LIMIT_MEDICOES } from "../constants/pagination";
 import api from "../services/api";
+import { API_ORIGIN } from "../services/apiConfig";
 import "../styles/pages.css";
 import "../styles/modal.css";
-
-const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
 
 function getFotoMedUrl(m) {
   const caminho = m.foto || m.fotoUrl || m.arquivo || m.arquivoUrl;
@@ -32,9 +31,9 @@ function getFotoMedUrl(m) {
   if (caminho.startsWith("http")) return caminho;
   // Compatibilidade com payload legado: apenas o nome do arquivo (sem path)
   if (!caminho.startsWith("/")) {
-    return `${BASE_URL}/api/files/raw/outros/${caminho}`;
+    return `${API_ORIGIN}/api/files/raw/outros/${caminho}`;
   }
-  return `${BASE_URL}${caminho.startsWith("/") ? "" : "/"}${caminho}`;
+  return `${API_ORIGIN}${caminho.startsWith("/") ? "" : "/"}${caminho}`;
 }
 
 const PAGE_LIMIT = PAGE_LIMIT_MEDICOES;
@@ -218,8 +217,8 @@ function Measurements() {
       const url = firstAnexo.url.startsWith("http")
         ? firstAnexo.url
         : firstAnexo.url.startsWith("/")
-          ? `${BASE_URL}${firstAnexo.url}`
-          : `${BASE_URL}/api/files/raw/${anexoTipo}/${firstAnexo.url}`;
+          ? `${API_ORIGIN}${firstAnexo.url}`
+          : `${API_ORIGIN}/api/files/raw/${anexoTipo}/${firstAnexo.url}`;
       setFotoUrls((prev) => ({ ...prev, [m.id]: url }));
       if (openLightbox) setLightbox(url);
       return;

@@ -32,6 +32,7 @@
   height: var(--navbar-height);
   padding: 0 24px;
   gap: 0;
+  min-width: 0;
 }
 
 /* ── Logo ─────────────────────────────────────────────────── */
@@ -53,6 +54,8 @@
   align-items: center;
   transition: opacity 0.15s;
   flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .navbar-logo:hover         { opacity: 0.82; }
@@ -249,6 +252,9 @@
   box-shadow: var(--sombra-grande);
   animation: nbDropIn var(--transition-base);
   max-height: calc(100vh - var(--navbar-height));
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -315,4 +321,19 @@
 @media (max-width: 600px) {
   .navbar-inner { padding: 0 16px; }
   .navbar-logo  { font-size: 19px; padding-right: 16px; margin-right: 0; }
+}
+
+@media (max-width: 430px) {
+  .navbar-inner {
+    padding: 0 12px;
+  }
+
+  .navbar-logo {
+    max-width: calc(100vw - 84px);
+    padding-right: 10px;
+  }
+
+  .navbar-logo-img {
+    height: 34px;
+  }
 }

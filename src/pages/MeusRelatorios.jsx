@@ -2,16 +2,19 @@
 // Relatórios de Medições — painel gerencial exclusivo para Admin e Supervisor.
 // Mostra visão consolidada das obras, resumo de status por medição e exportação em CSV.
 // Filtros avançados: obra, responsável, período, status, tipo de serviço.
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
 import PaginationControls from "../components/PaginationControls";
-import { listAllMedicoesPaginado } from "../services/medicoesService";
+import { listAllMedicoesPaginado, listMedicoesPaginado } from "../services/medicoesService";
 import {
   downloadManagementCsv,
   downloadMedicoesCsv,
 } from "../services/managementService";
 import { listUsers } from "../services/usersService";
+import { API_ORIGIN } from "../services/apiConfig";
+import { AuthContext } from "../context/AuthContext";
+import { PERFIS } from "../constants/permissions";
 import { TIPOS_SERVICO, getTipoServicoLabel, STATUS_CLASS, STATUS_LABEL } from "../constants/medicao";
 import { normalizeMedicao } from "../utils/normalizeMedicao";
 import useObras from "../hooks/useObras";
@@ -19,15 +22,16 @@ import { PAGE_LIMIT_RELATORIOS } from "../constants/pagination";
 import api from "../services/api";
 import "../styles/pages.css";
 
-const BASE_URL = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace(/\/api\/?$/, "");
-
 // Resolve URL de arquivo (relativa ou absoluta)
-function getFotoUrl(m) {
-  const caminho = m.foto || m.fotoUrl || m.arquivo || m.arquivoUrl;
-  const source = caminho || m.resolvedFotoUrl;
+function toAbsoluteUrl(source) {
   if (!source) return null;
   if (source.startsWith("http")) return source;
-  return `${BASE_URL}${source.startsWith("/") ? "" : "/"}${source}`;
+  return `${API_ORIGIN}${source.startsWith("/") ? "" : "/"}${source}`;
+}
+
+function getFotoSources(m) {
+  const rawSources = [m.foto, m.fotoUrl, m.arquivo, m.arquivoUrl, m.resolvedFotoUrl].filter(Boolean);
+  return [...new Set(rawSources.map(toAbsoluteUrl).filter(Boolean))];
 }
 
 function getInitialSummary() {
@@ -36,13 +40,16 @@ function getInitialSummary() {
 
 function MeusRelatorios() {
   const navigate = useNavigate();
+  const { user }                     = useContext(AuthContext);
+  const perfil                       = user?.perfil;
+  const isEncarregado                = perfil === PERFIS.ENCARREGADO;
   const [medicoes, setMedicoes]       = useState([]);
   const { obras }                     = useObras(200);
   const [responsaveis, setResponsaveis] = useState([]);
   const [erro, setErro]               = useState(null);
   const [loading, setLoading]         = useState(true);
   const [expandedId, setExpandedId]   = useState(null);
-  const [fotoUrls, setFotoUrls]       = useState({});
+  const [fotosPorMedicao, setFotosPorMedicao] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems]   = useState(0);
   const [statusSummary, setStatusSummary] = useState(getInitialSummary());
@@ -67,10 +74,15 @@ function MeusRelatorios() {
 
   // Carrega lista de encarregados uma vez
   useEffect(() => {
+    if (isEncarregado) {
+      setResponsaveis([]);
+      return;
+    }
+
     listUsers({ perfil: "encarregado", limit: 200 })
       .then(setResponsaveis)
       .catch(() => setResponsaveis([]));
-  }, []);
+  }, [isEncarregado]);
 
   // Carrega medições aplicando filtros
   const load = useCallback(async () => {
@@ -80,13 +92,15 @@ function MeusRelatorios() {
 
       const params = { page: currentPage, limit: PAGE_LIMIT_RELATORIOS };
       if (filtros.obra)        params.obra        = filtros.obra;
-      if (filtros.responsavel) params.responsavel = filtros.responsavel;
+      if (!isEncarregado && filtros.responsavel) params.responsavel = filtros.responsavel;
       if (filtros.status)      params.status      = filtros.status;
       if (filtros.tipoServico) params.tipoServico = filtros.tipoServico;
       if (filtros.dataInicio)  params.dataInicio  = `${filtros.dataInicio}T00:00:00`;
       if (filtros.dataFim)     params.dataFim     = `${filtros.dataFim}T23:59:59`;
 
-      const res = await listAllMedicoesPaginado(params);
+      const res = isEncarregado
+        ? await listMedicoesPaginado(params)
+        : await listAllMedicoesPaginado(params);
       const raw = Array.isArray(res.data) ? res.data : [];
       setMedicoes(raw.map(normalizeMedicao));
       setTotalItems(res.pagination?.totalItems ?? raw.length);
@@ -96,7 +110,7 @@ function MeusRelatorios() {
     } finally {
       setLoading(false);
     }
-  }, [filtros, currentPage]);
+  }, [filtros, currentPage, isEncarregado]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -123,28 +137,34 @@ function MeusRelatorios() {
   const toggleExpand = useCallback(async (med) => {
     setExpandedId((prev) => (prev === med.id ? null : med.id));
 
-    if (fotoUrls[med.id] !== undefined) return;
+    if (fotosPorMedicao[med.id] !== undefined) return;
 
-    const diretUrl = getFotoUrl(med);
-    if (diretUrl) {
-      setFotoUrls((prev) => ({ ...prev, [med.id]: diretUrl }));
-      return;
-    }
+    const directUrls = getFotoSources(med);
+    const ids = Array.isArray(med.anexos)
+      ? med.anexos
+        .map((anexo) => Number(anexo))
+        .filter((anexo) => Number.isInteger(anexo) && anexo > 0)
+      : [];
 
-    const firstAnexoId = Array.isArray(med.anexos) ? med.anexos[0] : null;
-    if (!firstAnexoId || typeof firstAnexoId !== "number") {
-      setFotoUrls((prev) => ({ ...prev, [med.id]: null }));
+    if (ids.length === 0) {
+      setFotosPorMedicao((prev) => ({ ...prev, [med.id]: directUrls.length > 0 ? directUrls : null }));
       return;
     }
 
     try {
-      const fileRes = await api.get(`/files/${firstAnexoId}`);
-      setFotoUrls((prev) => ({ ...prev, [med.id]: fileRes?.data?.data?.url || null }));
+      const settled = await Promise.allSettled(ids.map((anexoId) => api.get(`/files/${anexoId}`)));
+      const fileUrls = settled
+        .filter((result) => result.status === "fulfilled")
+        .map((result) => toAbsoluteUrl(result.value?.data?.data?.url))
+        .filter(Boolean);
+
+      const mergedUrls = [...new Set([...directUrls, ...fileUrls])];
+      setFotosPorMedicao((prev) => ({ ...prev, [med.id]: mergedUrls.length > 0 ? mergedUrls : null }));
     } catch (err) {
-      console.warn(`Não foi possível carregar anexo ${firstAnexoId} para medição ${med.id}:`, err.message);
-      setFotoUrls((prev) => ({ ...prev, [med.id]: null }));
+      console.warn(`Não foi possível carregar anexos da medição ${med.id}:`, err.message);
+      setFotosPorMedicao((prev) => ({ ...prev, [med.id]: directUrls.length > 0 ? directUrls : null }));
     }
-  }, [fotoUrls]);
+  }, [fotosPorMedicao]);
 
   // Deriva mês (YYYY-MM) a partir do filtro de data início para exportação
   function derivarMesExport() {
@@ -158,7 +178,7 @@ function MeusRelatorios() {
     setExportErro(null);
     setExportLoading(true);
     try {
-      await downloadManagementCsv(exportPeriodo);
+      await downloadManagementCsv({ periodo: exportPeriodo });
     } catch {
       setExportErro("Não foi possível gerar o arquivo. Tente novamente.");
     } finally {
@@ -207,15 +227,17 @@ function MeusRelatorios() {
             </div>
 
             {/* Responsável */}
-            <div className="ss-filter-field">
-              <label className="ss-filter-label" htmlFor="rf-resp">Responsável</label>
-              <select id="rf-resp" name="responsavel" className="ss-filter-select" value={filtros.responsavel} onChange={handleFiltro}>
-                <option value="">Todos</option>
-                {responsaveis.map((u) => (
-                  <option key={u.id} value={u.id}>{u.nome}</option>
-                ))}
-              </select>
-            </div>
+            {!isEncarregado && (
+              <div className="ss-filter-field">
+                <label className="ss-filter-label" htmlFor="rf-resp">Responsável</label>
+                <select id="rf-resp" name="responsavel" className="ss-filter-select" value={filtros.responsavel} onChange={handleFiltro}>
+                  <option value="">Todos</option>
+                  {responsaveis.map((u) => (
+                    <option key={u.id} value={u.id}>{u.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Status */}
             <div className="ss-filter-field">
@@ -369,7 +391,7 @@ function MeusRelatorios() {
 
             <div key={`reports-page-${currentPage}`} className="page-transition-fade page-transition-fade--stack">
               {medicoes.map((m) => {
-                const fotoUrl   = fotoUrls[m.id] !== undefined ? fotoUrls[m.id] : getFotoUrl(m);
+                const fotosMedicao = fotosPorMedicao[m.id] !== undefined ? fotosPorMedicao[m.id] : getFotoSources(m);
                 const expanded  = expandedId === m.id;
                 const tipoLabel = getTipoServicoLabel(m.tipoServico);
 
@@ -524,22 +546,29 @@ function MeusRelatorios() {
                       )}
 
                       {/* Arquivo/Foto anexada */}
-                      {fotoUrl ? (
+                      {Array.isArray(fotosMedicao) && fotosMedicao.length > 0 ? (
                         <div style={{ marginTop: "var(--espacamento-md)" }}>
                           <p style={{ fontWeight: 700, marginBottom: "var(--espacamento-sm)" }}>
-                            Arquivo anexado:
+                            Fotos anexadas ({fotosMedicao.length}):
                           </p>
-                          <img
-                            src={fotoUrl}
-                            alt="Foto da medição"
-                            style={{
-                              maxWidth: "100%",
-                              width: "320px",
-                              borderRadius: "var(--borda-radius)",
-                              border: "1px solid var(--cor-borda)",
-                            }}
-                            onError={(e) => { e.target.style.display = "none"; }}
-                          />
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "var(--espacamento-sm)" }}>
+                            {fotosMedicao.map((fotoUrl, idx) => (
+                              <img
+                                key={`${m.id}-foto-${idx}`}
+                                src={fotoUrl}
+                                alt={`Foto da medição ${idx + 1}`}
+                                style={{
+                                  width: "100%",
+                                  maxWidth: "180px",
+                                  aspectRatio: "1 / 1",
+                                  objectFit: "cover",
+                                  borderRadius: "var(--borda-radius)",
+                                  border: "1px solid var(--cor-borda)",
+                                }}
+                                onError={(e) => { e.target.style.display = "none"; }}
+                              />
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <p style={{ color: "var(--cor-texto-secundario)", fontSize: "var(--tamanho-fonte-pequena)", marginTop: "var(--espacamento-sm)" }}>

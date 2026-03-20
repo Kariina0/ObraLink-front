@@ -40,7 +40,7 @@ function App() {
           <Route path="/diario" element={<PrivateRoute routePath="/diario"><DiarioObra /></PrivateRoute>} />
           <Route path="/sincronizacao" element={<PrivateRoute routePath="/sincronizacao"><Sincronizacao /></PrivateRoute>} />
 
-          {/* Supervisor e Admin */}
+          {/* Supervisor/Admin + lista de medições para encarregado */}
           <Route path="/medicoes-lista" element={<PrivateRoute routePath="/medicoes-lista"><Measurements /></PrivateRoute>} />
           <Route path="/relatorios" element={<PrivateRoute routePath="/relatorios"><Relatorios /></PrivateRoute>} />
           <Route path="/obras" element={<PrivateRoute routePath="/obras"><GerenciarObras /></PrivateRoute>} />

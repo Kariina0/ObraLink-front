@@ -22,7 +22,7 @@ export const ROUTE_PERMISSIONS = {
   "/diario":               [PERFIS.ADMIN, PERFIS.SUPERVISOR, PERFIS.ENCARREGADO],
   "/sincronizacao":        [PERFIS.ADMIN, PERFIS.SUPERVISOR, PERFIS.ENCARREGADO],
 
-  // Supervisor e Admin
+  // Lista de medições (encarregado vê as próprias; supervisor/admin veem todas)
   "/medicoes-lista":       [PERFIS.ADMIN, PERFIS.SUPERVISOR, PERFIS.ENCARREGADO],
   "/relatorios":           [PERFIS.ADMIN, PERFIS.SUPERVISOR],
   "/obras":                [PERFIS.ADMIN, PERFIS.SUPERVISOR],

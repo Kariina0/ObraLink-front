@@ -9,6 +9,17 @@ import {
 } from "../utils/syncQueue";
 import "../styles/pages.css";
 
+const TYPE_LABELS = {
+  medicao: "Medição",
+  solicitacao: "Solicitação de Material",
+  diario: "Diário de Obra",
+  upload: "Arquivo para Upload",
+};
+
+function labelTipo(type) {
+  return TYPE_LABELS[type] || type;
+}
+
 export default function Sincronizacao() {
   const [pending, setPending] = useState([]);
   const [conflicts, setConflicts] = useState([]);
@@ -91,9 +102,15 @@ export default function Sincronizacao() {
         ) : (
           pending.map((item) => (
             <div key={item.id} className="card" style={{ marginTop: "var(--espacamento-sm)" }}>
-              <strong>{item.type}</strong>
-              <p>Sync ID: {item?.payload?.syncId}</p>
-              <p>Criado em: {new Date(item.createdAt).toLocaleString("pt-BR")}</p>
+              <strong>{labelTipo(item.type)}</strong>
+              {item?.payload?.obra && (
+                <p style={{ margin: "4px 0 0", color: "var(--cor-texto-secundario)", fontSize: "0.9rem" }}>
+                  Obra #{item.payload.obra}
+                </p>
+              )}
+              <p style={{ margin: "4px 0 0", color: "var(--cor-texto-secundario)", fontSize: "0.85rem" }}>
+                Salvo em: {new Date(item.createdAt).toLocaleString("pt-BR")}
+              </p>
             </div>
           ))
         )}
@@ -104,9 +121,16 @@ export default function Sincronizacao() {
         ) : (
           conflicts.map((item) => (
             <div key={item.id} className="card" style={{ marginTop: "var(--espacamento-sm)" }}>
-              <strong>{item.type}</strong>
-              <p>Sync ID: {item?.payload?.syncId}</p>
-              <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap" }}>
+              <strong>{labelTipo(item.type)}</strong>
+              {item?.payload?.obra && (
+                <p style={{ margin: "4px 0 0", color: "var(--cor-texto-secundario)", fontSize: "0.9rem" }}>
+                  Obra #{item.payload.obra}
+                </p>
+              )}
+              <p style={{ margin: "4px 0 0", color: "var(--cor-texto-secundario)", fontSize: "0.85rem" }}>
+                Salvo em: {new Date(item.createdAt).toLocaleString("pt-BR")}
+              </p>
+              <div style={{ display: "flex", gap: "var(--espacamento-sm)", flexWrap: "wrap", marginTop: "var(--espacamento-sm)" }}>
                 <button className="button-secondary" onClick={() => retryConflict(item.id)}>
                   Tentar novamente
                 </button>

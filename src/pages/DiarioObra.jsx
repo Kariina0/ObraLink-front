@@ -6,6 +6,7 @@ import {
   listMeusDiarios,
 } from "../services/diariosService";
 import { extractApiMessage } from "../services/response";
+import { enqueueSyncOperation } from "../utils/syncQueue";
 import useObras from "../hooks/useObras";
 import "../styles/pages.css";
 
@@ -256,10 +257,7 @@ export default function DiarioObra() {
       observacoesGerais: form.observacoesGerais.trim() || null,
     };
 
-    try {
-      setLoading(true);
-      await createDiario(payload);
-      setSuccess("Diário registrado com sucesso!");
+    const limparForm = () => {
       setAviso("");
       setForm((prev) => ({
         ...prev,
@@ -271,12 +269,43 @@ export default function DiarioObra() {
         materiais:         "",
         visitantes:        "",
       }));
+    };
+
+    // Modo offline: enfileira para sincronização automática
+    if (!navigator.onLine) {
+      try {
+        await enqueueSyncOperation("diario", payload);
+        setSuccess("Sem internet: diário salvo localmente e será enviado automaticamente ao reconectar.");
+        limparForm();
+      } catch {
+        setError("Não foi possível salvar o diário offline. Tente novamente.");
+      }
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await createDiario(payload);
+      setSuccess("Diário registrado com sucesso!");
+      limparForm();
       // Atualiza lista de recentes silenciosamente (sem spinner)
       listMeusDiarios({ page: 1, limit: 5 })
         .then((data) => setRecentes(Array.isArray(data?.data) ? data.data : []))
         .catch(() => {});
     } catch (err) {
-      setError(extractApiMessage(err, "Erro ao registrar o diário. Tente novamente."));
+      const status = err?.response?.status;
+      if (!status) {
+        // Falha de rede — salva offline como fallback
+        try {
+          await enqueueSyncOperation("diario", payload);
+          setSuccess("Sem conexão: diário salvo localmente e será enviado automaticamente ao reconectar.");
+          limparForm();
+        } catch {
+          setError("Erro ao registrar o diário. Verifique sua conexão e tente novamente.");
+        }
+      } else {
+        setError(extractApiMessage(err, "Erro ao registrar o diário. Tente novamente."));
+      }
     } finally {
       setLoading(false);
     }

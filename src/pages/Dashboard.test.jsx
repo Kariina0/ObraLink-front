@@ -54,6 +54,7 @@ describe("Dashboard", () => {
     });
 
     expect(screen.getByText("Nova Medição")).toBeInTheDocument();
+    expect(screen.getByText("Lista de Medições")).toBeInTheDocument();
     expect(screen.queryByText("Painel Administrativo")).not.toBeInTheDocument();
     expect(screen.queryByText("Cadastrar Funcionário")).not.toBeInTheDocument();
   });

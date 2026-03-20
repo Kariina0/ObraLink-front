@@ -9,6 +9,8 @@ import Layout from "../components/Layout";
 import { saveFileOffline, getPendingFiles, markAsUploaded, removeOfflineFile, incrementRetryCount, MAX_RETRY_COUNT } from "../utils/db";
 import { uploadFile } from "../services/filesService";
 import { extractApiMessage } from "../services/response";
+import { API_ORIGIN } from "../services/apiConfig";
+import { PERFIS } from "../constants/permissions";
 import useObras from "../hooks/useObras";
 import { AuthContext } from "../context/AuthContext";
 import "../styles/pages.css";
@@ -26,6 +28,16 @@ const TIPOS_ARQUIVO = [
 
 function getTodayInputDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isImageLike(mimeType = "", fileName = "") {
+  return mimeType.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(fileName);
+}
+
+function resolveUploadedUrl(rawUrl) {
+  if (!rawUrl) return null;
+  if (/^https?:\/\//i.test(rawUrl)) return rawUrl;
+  return `${API_ORIGIN}${rawUrl.startsWith("/") ? "" : "/"}${rawUrl}`;
 }
 
 function Upload() {
@@ -46,8 +58,86 @@ function Upload() {
   const [loading, setLoading] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [gallerySearch, setGallerySearch] = useState("");
+  const [galleryTypeFilter, setGalleryTypeFilter] = useState("");
+  const [galleryDateFilter, setGalleryDateFilter] = useState("todos");
+  const [galleryVisibleCount, setGalleryVisibleCount] = useState(10);
   const fileInputRef = useRef(null);
   const nomeResponsavel = user?.nome || "Usuário autenticado";
+  const perfilUsuario = user?.perfil;
+  const usuarioId = user?.id;
+
+  const visibleUploadedFiles = useMemo(() => {
+    if (perfilUsuario !== PERFIS.ENCARREGADO) return uploadedFiles;
+    return uploadedFiles.filter((item) => {
+      const ownerId = item?.uploader?.id;
+      if (ownerId === undefined || ownerId === null || usuarioId === undefined || usuarioId === null) {
+        return false;
+      }
+      return String(ownerId) === String(usuarioId);
+    });
+  }, [uploadedFiles, perfilUsuario, usuarioId]);
+
+  const canRemoveFromGallery = (item) => {
+    const ownerId = item?.uploader?.id;
+    if (perfilUsuario === PERFIS.ADMIN) return true;
+    if (ownerId === undefined || ownerId === null || usuarioId === undefined || usuarioId === null) {
+      return false;
+    }
+    return String(ownerId) === String(usuarioId);
+  };
+
+  const galleryTypeOptions = useMemo(() => {
+    const setTipos = new Set(
+      uploadedFiles
+        .map((item) => item?.tipoArquivo)
+        .filter(Boolean),
+    );
+    return Array.from(setTipos);
+  }, [uploadedFiles]);
+
+  const filteredUploadedFiles = useMemo(() => {
+    const termo = gallerySearch.trim().toLowerCase();
+    const agora = new Date();
+    const limiteRecente = new Date();
+    limiteRecente.setDate(agora.getDate() - 7);
+
+    return visibleUploadedFiles.filter((item) => {
+      if (galleryTypeFilter && item?.tipoArquivo !== galleryTypeFilter) {
+        return false;
+      }
+
+      if (termo && !(item?.nome || "").toLowerCase().includes(termo)) {
+        return false;
+      }
+
+      if (galleryDateFilter === "hoje") {
+        if (!item?.uploadedAt) return false;
+        const dataItem = new Date(item.uploadedAt);
+        if (dataItem.toDateString() !== agora.toDateString()) return false;
+      }
+
+      if (galleryDateFilter === "recentes") {
+        if (!item?.uploadedAt) return false;
+        const dataItem = new Date(item.uploadedAt);
+        if (dataItem < limiteRecente) return false;
+      }
+
+      return true;
+    });
+  }, [visibleUploadedFiles, galleryTypeFilter, gallerySearch, galleryDateFilter]);
+
+  const visibleGalleryItems = useMemo(() => {
+    return filteredUploadedFiles.slice(0, galleryVisibleCount);
+  }, [filteredUploadedFiles, galleryVisibleCount]);
+
+  const hasMoreGalleryItems = visibleGalleryItems.length < filteredUploadedFiles.length;
+
+  useEffect(() => {
+    setGalleryVisibleCount(10);
+  }, [gallerySearch, galleryTypeFilter, galleryDateFilter, visibleUploadedFiles.length]);
 
   const obrasOrdenadas = useMemo(() => {
     return [...obras].sort((a, b) => {
@@ -80,6 +170,14 @@ function Upload() {
   useEffect(() => {
     loadPendingFiles();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   // Sincroniza automaticamente ao reconectar
   useEffect(() => {
@@ -126,7 +224,16 @@ function Upload() {
 
   function processSelectedFile(nextFile) {
     if (!nextFile) return;
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+
     setFile(nextFile);
+    if (isImageLike(nextFile.type, nextFile.name)) {
+      setPreviewUrl(URL.createObjectURL(nextFile));
+    }
   }
 
   function handleFileInputChange(e) {
@@ -199,6 +306,10 @@ function Upload() {
       );
       await loadPendingFiles();
       setFile(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
       setForm((prev) => ({
         ...prev,
         tipoArquivo: "",
@@ -214,11 +325,33 @@ function Upload() {
     try {
       setLoading(true);
       const response = await uploadFile(file, metadata);
+      const resolvedUrl = resolveUploadedUrl(response?.url || response?.storage_url || "");
+
+      const newUploadedFile = {
+        id: response?.id || null,
+        nome: response?.nomeOriginal || response?.nome || file.name,
+        mimeType: response?.mimeType || file.type || "",
+        url: resolvedUrl,
+        tipoArquivo: response?.tipoArquivo || metadata.tipoArquivo || "",
+        descricao: response?.descricao || metadata.descricao || "",
+        uploadedAt: new Date().toISOString(),
+        uploader: {
+          id: response?.usuarioId || response?.uploadedBy || usuarioId || null,
+          nome: user?.nome || "",
+        },
+      };
+
+      setUploadedFiles((prev) => [...prev, newUploadedFile]);
+
       setSuccess(
         "Arquivo enviado com sucesso: " +
           (response?.nomeOriginal || response?.nome || file.name),
       );
       setFile(null);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
       setForm((prev) => ({
         ...prev,
         tipoArquivo: "",
@@ -232,6 +365,11 @@ function Upload() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRemoveUploadedFile = (itemToRemove) => {
+    if (!canRemoveFromGallery(itemToRemove)) return;
+    setUploadedFiles((prev) => prev.filter((item) => item !== itemToRemove));
   };
 
   // Solicitar reenvio manual de um arquivo pendente específico
@@ -437,6 +575,12 @@ function Upload() {
               className="medicao-upload-hidden-input"
               onChange={handleFileInputChange}
             />
+
+            {previewUrl && (
+              <div className="medicao-upload-preview" role="region" aria-label="Pré-visualização da imagem selecionada">
+                <img src={previewUrl} alt="Pré-visualização do arquivo selecionado" />
+              </div>
+            )}
           </div>
 
           </div>
@@ -458,6 +602,121 @@ function Upload() {
             </button>
           </div>
         </div>
+
+        <h3 className="upload-pendentes-title">Fotos e Arquivos Enviados</h3>
+
+        <div className="upload-galeria-filtros" aria-label="Filtros da galeria">
+          <div className="form-group upload-galeria-filtros__item">
+            <label htmlFor="gallerySearch">Buscar por nome</label>
+            <input
+              id="gallerySearch"
+              type="text"
+              value={gallerySearch}
+              placeholder="Ex: fachada"
+              onChange={(event) => setGallerySearch(event.target.value)}
+            />
+          </div>
+
+          <div className="form-group upload-galeria-filtros__item">
+            <label htmlFor="galleryTypeFilter">Tipo</label>
+            <select
+              id="galleryTypeFilter"
+              value={galleryTypeFilter}
+              onChange={(event) => setGalleryTypeFilter(event.target.value)}
+            >
+              <option value="">Todos os tipos</option>
+              {galleryTypeOptions.map((tipo) => (
+                <option key={tipo} value={tipo}>{tipo}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group upload-galeria-filtros__item">
+            <label htmlFor="galleryDateFilter">Data</label>
+            <select
+              id="galleryDateFilter"
+              value={galleryDateFilter}
+              onChange={(event) => setGalleryDateFilter(event.target.value)}
+            >
+              <option value="todos">Todos</option>
+              <option value="hoje">Hoje</option>
+              <option value="recentes">Últimos 7 dias</option>
+            </select>
+          </div>
+        </div>
+
+        {filteredUploadedFiles.length === 0 ? (
+          <div className="card upload-pendente-card upload-pendente-card--empty">
+            <p>Nenhum arquivo encontrado com os filtros aplicados.</p>
+          </div>
+        ) : (
+          <ul className="upload-galeria-list">
+            {visibleGalleryItems.map((item, index) => {
+              const cardKey = item.id || `${item.nome}-${index}`;
+              const isImage = isImageLike(item.mimeType, item.nome);
+
+              return (
+                <li key={cardKey} className="card upload-galeria-card">
+                  <div className="upload-galeria-card__thumb-wrap" aria-hidden="true">
+                    {item.url && isImage ? (
+                      <img src={item.url} alt="" className="upload-galeria-card__thumb" />
+                    ) : (
+                      <div className="upload-galeria-card__thumb upload-galeria-card__thumb--file">
+                        Arquivo
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="upload-galeria-card__content">
+                    <p className="upload-galeria-card__title">
+                      <strong>{item.nome}</strong>
+                    </p>
+                    {item.tipoArquivo && (
+                      <p className="upload-galeria-card__meta">Tipo: {item.tipoArquivo}</p>
+                    )}
+                    {item.uploadedAt && (
+                      <p className="upload-galeria-card__meta">
+                        Enviado em: {new Date(item.uploadedAt).toLocaleString("pt-BR")}
+                      </p>
+                    )}
+                    {item.descricao && (
+                      <p className="upload-galeria-card__meta">{item.descricao}</p>
+                    )}
+                  </div>
+
+                  <div className="upload-galeria-card__actions">
+                    {item.url && (
+                      <a href={item.url} target="_blank" rel="noreferrer" className="button-secondary upload-galeria-card__button" style={{ textDecoration: "none", display: "inline-block" }}>
+                        Abrir arquivo
+                      </a>
+                    )}
+                    {canRemoveFromGallery(item) && (
+                      <button
+                        type="button"
+                        className="button-secondary upload-galeria-card__button"
+                        onClick={() => handleRemoveUploadedFile(item)}
+                      >
+                        Remover da lista
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {hasMoreGalleryItems && (
+          <div className="upload-galeria-more-wrap">
+            <button
+              type="button"
+              className="button-secondary upload-galeria-more-button"
+              onClick={() => setGalleryVisibleCount((prev) => prev + 10)}
+            >
+              Ver mais
+            </button>
+          </div>
+        )}
 
         {/* ─── Arquivos Pendentes (Offline) ────────────────────────────────── */}
         <h3 className="upload-pendentes-title">

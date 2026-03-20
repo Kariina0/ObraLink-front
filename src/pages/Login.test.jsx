@@ -20,7 +20,7 @@ function renderLogin(loginMock = jest.fn()) {
   return {
     loginMock,
     ...render(
-      <AuthContext.Provider value={{ login: loginMock }}>
+      <AuthContext.Provider value={{ login: loginMock, user: null, authChecked: true }}>
         <MemoryRouter initialEntries={["/login"]}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -65,6 +65,21 @@ describe("Login", () => {
     });
 
     expect(loginMock).toHaveBeenCalledWith(resposta.data);
+    expect(await screen.findByText("Página inicial")).toBeInTheDocument();
+  });
+
+  test("redireciona para a página inicial quando já existe sessão ativa", async () => {
+    render(
+      <AuthContext.Provider value={{ login: jest.fn(), user: { id: 1, nome: "Karina", perfil: "admin" }, authChecked: true }}>
+        <MemoryRouter initialEntries={["/login"]}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<div>Página inicial</div>} />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+
     expect(await screen.findByText("Página inicial")).toBeInTheDocument();
   });
 

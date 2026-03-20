@@ -1,9 +1,8 @@
 import axios from "axios";
-
-const baseURL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
+import { API_BASE_URL } from "./apiConfig";
 
 const api = axios.create({
-  baseURL,
+  baseURL: API_BASE_URL,
 });
 
 // Interceptor: injeta token JWT em todas as requisicoes
@@ -52,7 +51,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshRes = await axios.post(`${baseURL}/auth/refresh`, {
+        const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, {
           refreshToken,
         });
 

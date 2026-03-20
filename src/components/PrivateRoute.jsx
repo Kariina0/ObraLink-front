@@ -17,10 +17,10 @@ const PrivateRoute = ({ children, routePath }) => {
     );
   }
 
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login" replace />;
 
   if (routePath && !canAccessRoute(user?.perfil, routePath)) {
-    return <Navigate to="/" />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
